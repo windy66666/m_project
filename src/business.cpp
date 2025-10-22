@@ -86,11 +86,8 @@ int Business:: search_user(sqlite3 *db, LOGIN_MSG *login_msg)
 //     return 1;
 // }
 
-int Business:: do_login(int sockfd, LOGIN_MSG *login_msg)
+int Business:: do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response_msg)
 {
-    char buf[128];
-    memset(buf, 0, 128);
-
     char sql[1024];
     char *errmsg = NULL;
     char **resultp;
@@ -108,24 +105,18 @@ int Business:: do_login(int sockfd, LOGIN_MSG *login_msg)
 
     if (nrow == 0)
     {
-        printf("用户不存在\n");
-        strcpy(buf, "用户不存在\n");
-        if(send(sockfd, buf, sizeof(buf), 0) == -1)
-        {
-            perror("send_search_result");
-        }
+        printf("用户:%s 不存在\n", login_msg->user_account);
+        strcpy(response_msg->response, "用户不存在\n");
+        response_msg->success_flag = 0;
         return -1;
     }else{
         int index = ncolumn;
-        printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
+        // printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
         if (strcmp(login_msg->user_password, resultp[index+1]) != 0)
         {
-            printf("密码错误\n");
-            strcpy(buf, "密码错误\n");
-            if(send(sockfd, buf, sizeof(buf), 0) == -1)
-            {
-                perror("send_login_check_result");
-            }
+            printf("用户:%s 密码错误\n", login_msg->user_account);
+            strcpy(response_msg->response, "密码错误\n");
+            response_msg->success_flag = 0;
             return -1;
         }
     }
@@ -142,12 +133,8 @@ int Business:: do_login(int sockfd, LOGIN_MSG *login_msg)
     }
     printf("------------------------------\n");
 
-    memset(buf, 0, sizeof(buf));
-    strcpy(buf, "登录成功!\n");
-    if(send(sockfd, buf, sizeof(buf), 0) == -1)
-    {
-        perror("send_login");
-    }
+    strcpy(response_msg->response, "登录成功!\n");
+    response_msg->success_flag = 1;
     return 0;
 }
 
@@ -276,10 +263,18 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
     }
 
     printf("即将登录用户,账号:%s  密码:%s\n", login_msg.user_account, login_msg.user_password);
-    if(do_login(clientfd, &login_msg) != 0)
+
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = NORMAL_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+
+    do_login(clientfd, &login_msg, &response_msg);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
     {
-        printf("登录错误\n");
-        return -1;
+        printf("向用户:%s 发送登录响应失败", login_msg.user_account);
     }
 
     return 0;
