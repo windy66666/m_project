@@ -7,7 +7,7 @@
 #define RESPONSE_SIZE 128
 
 // 消息类型枚举
-enum MessageType : int {
+enum MessageType {
     LOGIN_REQUEST = 1,           // 登录请求
     REGISTER_REQUEST = 2,        // 注册请求
     FRIEND_LIST_REQUEST = 3,     // 好友列表请求

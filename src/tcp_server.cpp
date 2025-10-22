@@ -168,9 +168,8 @@ int TcpServer:: main_loop()
                 }
             }else if (events[i].events & EPOLLIN)
             {
-                int *clientfd_ptr = (int *)malloc(sizeof(int));
-                *clientfd_ptr = events[i].data.fd;
-                business.push_task(clientfd_ptr);
+                int clientfd = events[i].data.fd;
+                business.push_task(&clientfd);
                 // g_thread_pool_push(pool, clientfd_ptr, NULL);
             }
         }
