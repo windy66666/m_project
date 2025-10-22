@@ -1,6 +1,6 @@
 #include "business.h"
 
-#define db_name "my.db" 
+// #define db_name "my.db" 
 
 
 int Business:: callback(void *arg, int col, char** value, char** key)
@@ -88,39 +88,43 @@ int Business:: search_user(sqlite3 *db, LOGIN_MSG *login_msg)
 
 int Business:: do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response_msg)
 {
-    char sql[1024];
-    char *errmsg = NULL;
-    char **resultp;
-    int nrow;
-    int ncolumn;
+    // char sql[1024];
+    // char *errmsg = NULL;
+    // char **resultp;
+    // int nrow;
+    // int ncolumn;
 
-    sprintf(sql, "select *from user_info where (account_num='%s');", login_msg->user_account);
-    if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
+    // sprintf(sql, "select *from user_info where (account_num='%s');", login_msg->user_account);
+    // if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
+    // {
+    //     printf("%s", errmsg);
+    //     sqlite3_free(errmsg);
+    //     errmsg = NULL;
+    //     return -1;
+    // }
+
+    // if (nrow == 0)
+    // {
+    //     printf("用户:%s 不存在\n", login_msg->user_account);
+    //     strcpy(response_msg->response, "用户不存在\n");
+    //     response_msg->success_flag = 0;
+    //     return -1;
+    // }else{
+    //     int index = ncolumn;
+    //     // printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
+    //     if (strcmp(login_msg->user_password, resultp[index+1]) != 0)
+    //     {
+    //         printf("用户:%s 密码错误\n", login_msg->user_account);
+    //         strcpy(response_msg->response, "密码错误\n");
+    //         response_msg->success_flag = 0;
+    //         return -1;
+    //     }
+    // }
+    if(m_db_handler->login_check(login_msg, response_msg) != 0)
     {
-        printf("%s", errmsg);
-        sqlite3_free(errmsg);
-        errmsg = NULL;
         return -1;
     }
 
-    if (nrow == 0)
-    {
-        printf("用户:%s 不存在\n", login_msg->user_account);
-        strcpy(response_msg->response, "用户不存在\n");
-        response_msg->success_flag = 0;
-        return -1;
-    }else{
-        int index = ncolumn;
-        // printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
-        if (strcmp(login_msg->user_password, resultp[index+1]) != 0)
-        {
-            printf("用户:%s 密码错误\n", login_msg->user_account);
-            strcpy(response_msg->response, "密码错误\n");
-            response_msg->success_flag = 0;
-            return -1;
-        }
-    }
-    
     user_client[sockfd] = string(login_msg->user_account);
     online_user_count = user_client.size();
     
@@ -139,14 +143,14 @@ int Business:: do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response
 }
 
 
-Business:: Business()
+Business:: Business(data_handler * DataHandler)
 {
     m_pool = g_thread_pool_new(thread_handle, this, 5, FALSE, NULL);
-
-    if(sqlite3_open(db_name, &m_db) != SQLITE_OK)
-    {
-        perror("sqlite3_open");
-    }
+    m_db_handler = DataHandler;
+    // if(sqlite3_open(db_name, &m_db) != SQLITE_OK)
+    // {
+    //     perror("sqlite3_open");
+    // }
 }
 
 Business:: ~Business()
@@ -245,23 +249,6 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
     // 接受剩余数据
     LOGIN_MSG login_msg;
 
-    // int remain_data = msg_header->msg_length;
-
-    // if (remain_data != sizeof(LOGIN_MSG) - sizeof(MSG_HEADER))
-    // {
-    //     printf("登录消息长度错误\n");
-    //     return -1;
-    // }
-    
-    // memcpy(&login_msg.msg_header, msg_header, sizeof(MSG_HEADER));
-
-    // char *msg_data = (char*)(&login_msg) + sizeof(MSG_HEADER); 
-    // int recv_size = recv(clientfd, msg_data, remain_data,  MSG_WAITALL);
-    // if (recv_size != remain_data)
-    // {
-    //     printf("登录消息不完整\n");
-    //     return -1;
-    // }
     if(receive_remain_message(clientfd, msg_header, &login_msg) != 0)
     {
         return -1;
@@ -284,45 +271,32 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
     return 0;
 }
 
-// int Business:: handle_register_message(int clientfd, MSG_HEADER *msg_header)
-// {
-//     int remain_data = msg_header->msg_length;
+int Business:: handle_register_message(int clientfd, MSG_HEADER *msg_header)
+{
+    // // 接受剩余数据
+    // REGISTET_MSG register_msg;
 
-//     if (remain_data != sizeof(REGISTET_MSG) - sizeof(MSG_HEADER))
-//     {
-//         printf("注册消息长度错误\n");
-//         return -1;
-//     }
-    
-//     // 接受剩余数据
-//     REGISTET_MSG register_msg;
-//     memcpy(&login_msg.msg_header, msg_header, sizeof(MSG_HEADER));
+    // if(receive_remain_message(clientfd, msg_header, &register_msg) != 0)
+    // {
+    //     return -1;
+    // }
 
-//     char *msg_data = (char*)(&login_msg) + sizeof(MSG_HEADER); 
-//     int recv_size = recv(clientfd, msg_data, remain_data,  MSG_WAITALL);
-//     if (recv_size != remain_data)
-//     {
-//         printf("登录消息不完整\n");
-//         return -1;
-//     }
+    // RESPONSE_MSG response_msg;
+    // memset(&response_msg, 0, sizeof(response_msg));
+    // response_msg.msg_header.msg_type = NORMAL_RESPONSE;
+    // response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    // response_msg.msg_header.timestamp = time(NULL);
 
-//     printf("即将登录用户,账号:%s  密码:%s\n", login_msg.user_account, login_msg.user_password);
+    // printf("即将注册用户,账号:%s  密码:%s\n", register_msg.user_account, register_msg.user_password);
+    // do_register(clientfd, &register_msg, &response_msg);
 
-//     RESPONSE_MSG response_msg;
-//     memset(&response_msg, 0, sizeof(response_msg));
-//     response_msg.msg_header.msg_type = NORMAL_RESPONSE;
-//     response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
-//     response_msg.msg_header.timestamp = time(NULL);
+    // if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    // {
+    //     printf("向用户:%s 发送注册响应失败", register_msg.user_account);
+    // }
 
-//     do_login(clientfd, &login_msg, &response_msg);
-
-//     if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
-//     {
-//         printf("向用户:%s 发送登录响应失败", login_msg.user_account);
-//     }
-
-//     return 0;
-// }
+    return 0;
+}
 
 template<typename T>
 int Business:: receive_remain_message(int clientfd, MSG_HEADER *msg_header, T* total_msg)

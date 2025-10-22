@@ -1,8 +1,8 @@
 #include "tcp_server.h"
 
 
-TcpServer::TcpServer(const char *ip, const char *port)
-    : m_ip(ip), m_port(port), m_listen_fd(-1), epollfd(-1)
+TcpServer::TcpServer(const char *ip, const char *port, Business * business)
+    : m_ip(ip), m_port(port), m_listen_fd(-1), epollfd(-1),m_business(business)
 {
     memset(&m_server_addr, 0, sizeof(m_server_addr));
     memset(&m_client_addr, 0, sizeof(m_client_addr));
@@ -35,7 +35,7 @@ int TcpServer:: stop()
         m_listen_fd = -1;
     }
 
-    g_thread_pool_free(business.m_pool, FALSE, TRUE);
+    g_thread_pool_free(m_business->m_pool, FALSE, TRUE);
 
     if (epollfd != -1) {
         close(epollfd);
@@ -169,7 +169,7 @@ int TcpServer:: main_loop()
             }else if (events[i].events & EPOLLIN)
             {
                 int clientfd = events[i].data.fd;
-                business.push_task(&clientfd);
+                m_business->push_task(&clientfd);
                 // g_thread_pool_push(pool, clientfd_ptr, NULL);
             }
         }

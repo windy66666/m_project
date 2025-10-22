@@ -50,7 +50,6 @@ int receive_message_header(int sockfd, MSG_HEADER *header)
         perror("recv_login\n");
         return -1;  
     }
-    
     // printf("消息类型：%d, 消息长度: %d, 消息时间戳:%d, 消息数量：%d\n", header->msg_type, header->msg_length, header->timestamp, header->total_count);
     return 0;
 }
@@ -87,43 +86,39 @@ int handle_NormalResponse_message(int clientfd, MSG_HEADER *msg_header)
     }
 }
 
-// int do_register(int sockfd)
-// {
-//     REGISTET_MSG msg;
-//     memset(&msg, 0, sizeof(msg));
-//     msg.msg_header.msg_type = REGISTER_REQUEST;
-//     msg.msg_header.total_count = 1;
-//     msg.msg_header.msg_length = sizeof(REGISTET_MSG) - sizeof(MSG_HEADER);
-//     msg.msg_header.timestamp = time(NULL);
+int do_register(int sockfd)
+{
+    REGISTET_MSG msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.msg_header.msg_type = REGISTER_REQUEST;
+    msg.msg_header.total_count = 1;
+    msg.msg_header.msg_length = sizeof(REGISTET_MSG) - sizeof(MSG_HEADER);
+    msg.msg_header.timestamp = time(NULL);
 
-//     printf("---请输入以下注册信息---\n");
-//     printf("账号：");
-//     scanf("%s", msg.user_account);
-//     printf("密码：");
-//     scanf("%s", msg.user_account);
-//     if(send(sockfd, (void *)&msg, sizeof(msg), 0) == -1)
-//     {
-//         perror("send_register");
-//     }
+    printf("---请输入以下注册信息---\n");
+    printf("账号：");
+    scanf("%s", msg.user_account);
+    printf("密码：");
+    scanf("%s", msg.user_account);
+    if(send(sockfd, (void *)&msg, sizeof(msg), 0) == -1)
+    {
+        perror("send_register");
+    }
 
-//     MSG_HEADER msg_header;
-//     if(receive_message_header(sockfd, &msg_header) != 0)
-//     {
-//         perror("登录时接收服务端消息失败\n");
-//     }
+    MSG_HEADER msg_header;
+    if(receive_message_header(sockfd, &msg_header) != 0)
+    {
+        perror("注册时接收服务端消息失败\n");
+    }
 
-
-//     if (msg_header.msg_type == NORMAL_RESPONSE)
-//     {
-//         if ()
-//         {
-//             /* code */
-//         }
-        
-//     }
-
-//     return 0;
-// }
+    // printf("消息头类型：%d\n", msg_header.msg_type);
+    if (msg_header.msg_type == NORMAL_RESPONSE)
+    {
+        return handle_NormalResponse_message(sockfd, &msg_header);
+    }
+    
+    return -1;
+}
 
 int do_login(int sockfd)
 {
@@ -265,7 +260,7 @@ int main(int argc, char *argv[])
             {
             case 1:
                 printf("register\n");
-                // do_register(sockfd);
+                do_register(sockfd);
                 break;
             case 2:
                 printf("login\n");

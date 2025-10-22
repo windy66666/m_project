@@ -16,7 +16,7 @@
 
 class TcpServer {
 public:
-    TcpServer(const char *ip, const char *port);
+    TcpServer(const char *ip, const char *port, Business * business);
     ~TcpServer();
     int start();    // 启动服务器
     int stop();     // 停止服务器
@@ -35,7 +35,7 @@ private:
     struct sockaddr_in m_server_addr, m_client_addr;
     int epollfd;
     int MAX_EVENTS = 64;
-    Business business;
+    Business * m_business = NULL;
     // map<string, int> 
 };
 

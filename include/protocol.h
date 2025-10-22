@@ -132,11 +132,11 @@ typedef struct{
     FRIEND_INFO friend_info;
 }FRIEND_NOTICE_MSG;
 
-
 // 用户请求响应
 typedef struct{
     MSG_HEADER msg_header;
     char response[RESPONSE_SIZE];
+    int success_flag;
 }RESPONSE_MSG;
 
 #endif // PROTOCOL_H

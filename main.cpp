@@ -8,8 +8,9 @@ int main(int argc, char *argv[])
         printf("Usage:%s serverip port\n", argv[0]);
         return -1;
     }
-
-    TcpServer tcpserver(argv[1], argv[2]);
+    data_handler datahandler;
+    Business business(&datahandler);
+    TcpServer tcpserver(argv[1], argv[2], &business);
 
     tcpserver.start();
 
