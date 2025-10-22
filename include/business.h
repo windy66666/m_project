@@ -34,6 +34,9 @@ public:
     int receive_message_header(int sockfd, MSG_HEADER *header, Business *business);
     int handle_login_message(int clientfd, MSG_HEADER *msg_header);
 
+    template<typename T>
+    int receive_remain_message(int clientfd, MSG_HEADER *msg_header, T *total_msg);
+
 public:
     GThreadPool *m_pool;
     int online_user_count = 0;

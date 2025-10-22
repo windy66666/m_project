@@ -44,7 +44,7 @@ int Business:: search_user(sqlite3 *db, LOGIN_MSG *login_msg)
     return is_exsit;
 }
 
-// int Business:: do_register(int sockfd, MSG_INFO *msg_info)
+// int Business:: do_register(int sockfd, MSG_INFO *msg_info, RESPONSE_MSG *response_msg)
 // {
 //     char sql[1024];
 //     char *errmsg = NULL;
@@ -180,7 +180,7 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     {
     case REGISTER_REQUEST:
         // printf("即将注册用户,账号:%s  密码:%s\n", msg_info.account_num, msg_info.password);
-        // self->do_register(clientfd, &msg_info);
+        // self->handle_register_message(clientfd, &msg_header);
         break;
     case LOGIN_REQUEST:
         // printf("-------------------执行登录-----------\n");
@@ -242,27 +242,30 @@ int Business:: receive_message_header(int sockfd, MSG_HEADER *header, Business *
 
 int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
 {
-    int remain_data = msg_header->msg_length;
-
-    if (remain_data != sizeof(LOGIN_MSG) - sizeof(MSG_HEADER))
-    {
-        printf("登录消息长度错误\n");
-        return -1;
-    }
-    
     // 接受剩余数据
     LOGIN_MSG login_msg;
-    memcpy(&login_msg.msg_header, msg_header, sizeof(MSG_HEADER));
 
-    char *msg_data = (char*)(&login_msg) + sizeof(MSG_HEADER); 
-    int recv_size = recv(clientfd, msg_data, remain_data,  MSG_WAITALL);
-    if (recv_size != remain_data)
+    // int remain_data = msg_header->msg_length;
+
+    // if (remain_data != sizeof(LOGIN_MSG) - sizeof(MSG_HEADER))
+    // {
+    //     printf("登录消息长度错误\n");
+    //     return -1;
+    // }
+    
+    // memcpy(&login_msg.msg_header, msg_header, sizeof(MSG_HEADER));
+
+    // char *msg_data = (char*)(&login_msg) + sizeof(MSG_HEADER); 
+    // int recv_size = recv(clientfd, msg_data, remain_data,  MSG_WAITALL);
+    // if (recv_size != remain_data)
+    // {
+    //     printf("登录消息不完整\n");
+    //     return -1;
+    // }
+    if(receive_remain_message(clientfd, msg_header, &login_msg) != 0)
     {
-        printf("登录消息不完整\n");
         return -1;
     }
-
-    printf("即将登录用户,账号:%s  密码:%s\n", login_msg.user_account, login_msg.user_password);
 
     RESPONSE_MSG response_msg;
     memset(&response_msg, 0, sizeof(response_msg));
@@ -270,11 +273,76 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
     response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
     response_msg.msg_header.timestamp = time(NULL);
 
+    printf("即将登录用户,账号:%s  密码:%s\n", login_msg.user_account, login_msg.user_password);
     do_login(clientfd, &login_msg, &response_msg);
 
     if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
     {
         printf("向用户:%s 发送登录响应失败", login_msg.user_account);
+    }
+
+    return 0;
+}
+
+// int Business:: handle_register_message(int clientfd, MSG_HEADER *msg_header)
+// {
+//     int remain_data = msg_header->msg_length;
+
+//     if (remain_data != sizeof(REGISTET_MSG) - sizeof(MSG_HEADER))
+//     {
+//         printf("注册消息长度错误\n");
+//         return -1;
+//     }
+    
+//     // 接受剩余数据
+//     REGISTET_MSG register_msg;
+//     memcpy(&login_msg.msg_header, msg_header, sizeof(MSG_HEADER));
+
+//     char *msg_data = (char*)(&login_msg) + sizeof(MSG_HEADER); 
+//     int recv_size = recv(clientfd, msg_data, remain_data,  MSG_WAITALL);
+//     if (recv_size != remain_data)
+//     {
+//         printf("登录消息不完整\n");
+//         return -1;
+//     }
+
+//     printf("即将登录用户,账号:%s  密码:%s\n", login_msg.user_account, login_msg.user_password);
+
+//     RESPONSE_MSG response_msg;
+//     memset(&response_msg, 0, sizeof(response_msg));
+//     response_msg.msg_header.msg_type = NORMAL_RESPONSE;
+//     response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+//     response_msg.msg_header.timestamp = time(NULL);
+
+//     do_login(clientfd, &login_msg, &response_msg);
+
+//     if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+//     {
+//         printf("向用户:%s 发送登录响应失败", login_msg.user_account);
+//     }
+
+//     return 0;
+// }
+
+template<typename T>
+int Business:: receive_remain_message(int clientfd, MSG_HEADER *msg_header, T* total_msg)
+{
+    int remain_data = msg_header->msg_length;
+
+    if (remain_data != sizeof(T) - sizeof(MSG_HEADER))
+    {
+        printf("消息长度错误\n");
+        return -1;
+    }
+    
+    memcpy(&total_msg->msg_header, msg_header, sizeof(MSG_HEADER));
+
+    char *msg_data = (char*)(total_msg) + sizeof(MSG_HEADER); 
+    int recv_size = recv(clientfd, msg_data, remain_data, MSG_WAITALL);
+    if (recv_size != remain_data)
+    {
+        printf("消息不完整\n");
+        return -1;
     }
 
     return 0;
