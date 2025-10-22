@@ -88,13 +88,25 @@ int Business:: search_user(sqlite3 *db, LOGIN_MSG *login_msg)
 
 int Business:: do_login(int sockfd, LOGIN_MSG *login_msg)
 {
-    char sql[1024];
-    char *errmsg = NULL;
     char buf[128];
     memset(buf, 0, 128);
 
-    int res = search_user(m_db, login_msg);
-    if (res == 0)
+    char sql[1024];
+    char *errmsg = NULL;
+    char **resultp;
+    int nrow;
+    int ncolumn;
+
+    sprintf(sql, "select *from user_info where (account_num='%s');", login_msg->user_account);
+    if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
+    {
+        printf("%s", errmsg);
+        sqlite3_free(errmsg);
+        errmsg = NULL;
+        return -1;
+    }
+
+    if (nrow == 0)
     {
         printf("用户不存在\n");
         strcpy(buf, "用户不存在\n");
@@ -103,31 +115,19 @@ int Business:: do_login(int sockfd, LOGIN_MSG *login_msg)
             perror("send_search_result");
         }
         return -1;
-    }
-
-    int is_right = 0;
-    sprintf(sql, "select *from user_info where (account_num='%s' and password='%s');", login_msg->user_account, login_msg->user_password);
-    res = sqlite3_exec(m_db, sql, callback, (void *)&is_right, &errmsg);
-    if (res != SQLITE_OK)
-    {
-        if (errmsg != NULL)
+    }else{
+        int index = ncolumn;
+        printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
+        if (strcmp(login_msg->user_password, resultp[index+1]) != 0)
         {
-            printf("SQL search error:%s\n", errmsg);
-            sqlite3_free(errmsg);
-            errmsg = NULL;
+            printf("密码错误\n");
+            strcpy(buf, "密码错误\n");
+            if(send(sockfd, buf, sizeof(buf), 0) == -1)
+            {
+                perror("send_login_check_result");
+            }
+            return -1;
         }
-        return -1;
-    }
-    
-    if (is_right == 0)
-    {
-        printf("密码错误\n");
-        strcpy(buf, "密码错误\n");
-        if(send(sockfd, buf, sizeof(buf), 0) == -1)
-        {
-            perror("send_login_check_result");
-        }
-        return -1;
     }
     
     user_client[sockfd] = string(login_msg->user_account);
