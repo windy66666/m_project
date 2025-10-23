@@ -1,7 +1,5 @@
 #include "business.h"
 
-// #define db_name "my.db" 
-
 
 int Business:: callback(void *arg, int col, char** value, char** key)
 {
@@ -44,82 +42,23 @@ int Business:: search_user(sqlite3 *db, LOGIN_MSG *login_msg)
     return is_exsit;
 }
 
-// int Business:: do_register(int sockfd, MSG_INFO *msg_info, RESPONSE_MSG *response_msg)
-// {
-//     char sql[1024];
-//     char *errmsg = NULL;
-//     char buf[128];
-//     memset(buf, 0, 128);
+int Business:: do_register(int sockfd, REGISTET_MSG *register_msg, RESPONSE_MSG *response_msg)
+{
 
-//     // int res = search_user(m_db, msg_info);
-//     // if (res == 1)
-//     // {
-//     //     printf("用户已经存在\n");
-//     //     strcpy(buf, "用户已经存在\n");
-//     //     if(send(sockfd, buf, sizeof(buf), 0) == -1)
-//     //     {
-//     //         perror("send_search_result");
-//     //     }
-//     //     return -1;
-//     // }
-
-//     // sprintf(sql, "insert into user_info values('%s', '%s');", msg_info->account_num, msg_info->password);
-//     // res = sqlite3_exec(m_db, sql, NULL, NULL, &errmsg);
-//     // if (res != SQLITE_OK)
-//     // {
-//     //     if (errmsg != NULL)
-//     //     {
-//     //         printf("SQL error:%s\n", errmsg);
-//     //         sqlite3_free(errmsg);
-//     //         errmsg = NULL;
-//     //     }
-//     //     return -1;
-//     // }
+    if(m_db_handler->register_data_handle(register_msg, response_msg) != 0)
+    {
+        return -1;
+    }
     
-//     memset(buf, 0, sizeof(buf));
-//     strcpy(buf, "注册成功！\n");
-//     if(send(sockfd, buf, sizeof(buf), 0) == -1)
-//     {
-//         perror("send_register");
-//     }
-//     printf("%s注册成功\n", msg_info->account_num);
-//     return 1;
-// }
+    strcpy(response_msg->response, "注册成功!\n");
+    response_msg->success_flag = 1;
+
+    printf("%s注册成功\n", register_msg->user_account);
+    return 1;
+}
 
 int Business:: do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response_msg)
 {
-    // char sql[1024];
-    // char *errmsg = NULL;
-    // char **resultp;
-    // int nrow;
-    // int ncolumn;
-
-    // sprintf(sql, "select *from user_info where (account_num='%s');", login_msg->user_account);
-    // if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
-    // {
-    //     printf("%s", errmsg);
-    //     sqlite3_free(errmsg);
-    //     errmsg = NULL;
-    //     return -1;
-    // }
-
-    // if (nrow == 0)
-    // {
-    //     printf("用户:%s 不存在\n", login_msg->user_account);
-    //     strcpy(response_msg->response, "用户不存在\n");
-    //     response_msg->success_flag = 0;
-    //     return -1;
-    // }else{
-    //     int index = ncolumn;
-    //     // printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
-    //     if (strcmp(login_msg->user_password, resultp[index+1]) != 0)
-    //     {
-    //         printf("用户:%s 密码错误\n", login_msg->user_account);
-    //         strcpy(response_msg->response, "密码错误\n");
-    //         response_msg->success_flag = 0;
-    //         return -1;
-    //     }
-    // }
     if(m_db_handler->login_check(login_msg, response_msg) != 0)
     {
         return -1;
@@ -127,7 +66,10 @@ int Business:: do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response
 
     user_client[sockfd] = string(login_msg->user_account);
     online_user_count = user_client.size();
-    
+
+    strcpy(response_msg->response, "登录成功!\n");
+    response_msg->success_flag = 1;
+
     printf("%s登录成功\n", login_msg->user_account);
     printf("------------------------------\n");
     printf("当前在线人数：%d\n", online_user_count);
@@ -137,8 +79,6 @@ int Business:: do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response
     }
     printf("------------------------------\n");
 
-    strcpy(response_msg->response, "登录成功!\n");
-    response_msg->success_flag = 1;
     return 0;
 }
 
@@ -147,10 +87,6 @@ Business:: Business(data_handler * DataHandler)
 {
     m_pool = g_thread_pool_new(thread_handle, this, 5, FALSE, NULL);
     m_db_handler = DataHandler;
-    // if(sqlite3_open(db_name, &m_db) != SQLITE_OK)
-    // {
-    //     perror("sqlite3_open");
-    // }
 }
 
 Business:: ~Business()
@@ -184,7 +120,7 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     {
     case REGISTER_REQUEST:
         // printf("即将注册用户,账号:%s  密码:%s\n", msg_info.account_num, msg_info.password);
-        // self->handle_register_message(clientfd, &msg_header);
+        self->handle_register_message(clientfd, &msg_header);
         break;
     case LOGIN_REQUEST:
         // printf("-------------------执行登录-----------\n");
@@ -273,27 +209,27 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
 
 int Business:: handle_register_message(int clientfd, MSG_HEADER *msg_header)
 {
-    // // 接受剩余数据
-    // REGISTET_MSG register_msg;
+    // 接受剩余数据
+    REGISTET_MSG register_msg;
 
-    // if(receive_remain_message(clientfd, msg_header, &register_msg) != 0)
-    // {
-    //     return -1;
-    // }
+    if(receive_remain_message(clientfd, msg_header, &register_msg) != 0)
+    {
+        return -1;
+    }
 
-    // RESPONSE_MSG response_msg;
-    // memset(&response_msg, 0, sizeof(response_msg));
-    // response_msg.msg_header.msg_type = NORMAL_RESPONSE;
-    // response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
-    // response_msg.msg_header.timestamp = time(NULL);
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = NORMAL_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
 
-    // printf("即将注册用户,账号:%s  密码:%s\n", register_msg.user_account, register_msg.user_password);
-    // do_register(clientfd, &register_msg, &response_msg);
+    printf("即将注册用户,账号:%s  密码:%s\n", register_msg.user_account, register_msg.user_password);
+    do_register(clientfd, &register_msg, &response_msg);
 
-    // if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
-    // {
-    //     printf("向用户:%s 发送注册响应失败", register_msg.user_account);
-    // }
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    {
+        printf("向用户:%s 发送注册响应失败", register_msg.user_account);
+    }
 
     return 0;
 }

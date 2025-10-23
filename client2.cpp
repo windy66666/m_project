@@ -90,16 +90,20 @@ int do_register(int sockfd)
 {
     REGISTET_MSG msg;
     memset(&msg, 0, sizeof(msg));
+
+    printf("---请输入以下注册信息---\n");
+    printf("昵称：");
+    scanf("%s", msg.user_name);
+    printf("账号：");
+    scanf("%s", msg.user_account);
+    printf("密码：");
+    scanf("%s", msg.user_password);
+
     msg.msg_header.msg_type = REGISTER_REQUEST;
     msg.msg_header.total_count = 1;
     msg.msg_header.msg_length = sizeof(REGISTET_MSG) - sizeof(MSG_HEADER);
     msg.msg_header.timestamp = time(NULL);
 
-    printf("---请输入以下注册信息---\n");
-    printf("账号：");
-    scanf("%s", msg.user_account);
-    printf("密码：");
-    scanf("%s", msg.user_account);
     if(send(sockfd, (void *)&msg, sizeof(msg), 0) == -1)
     {
         perror("send_register");
@@ -124,16 +128,16 @@ int do_login(int sockfd)
 {
     LOGIN_MSG msg;
     memset(&msg, 0, sizeof(msg));
-    msg.msg_header.msg_type = LOGIN_REQUEST;
-    msg.msg_header.total_count = 1;
-    msg.msg_header.msg_length = sizeof(LOGIN_MSG) - sizeof(MSG_HEADER);
-    msg.msg_header.timestamp = time(NULL);
 
     printf("账号：");
     scanf("%s", msg.user_account);
     printf("密码：");
     scanf("%s", msg.user_password);
 
+    msg.msg_header.msg_type = LOGIN_REQUEST;
+    msg.msg_header.total_count = 1;
+    msg.msg_header.msg_length = sizeof(LOGIN_MSG) - sizeof(MSG_HEADER);
+    msg.msg_header.timestamp = time(NULL);
     // printf("接收消息头大小：%ld\n", sizeof(msg.msg_header));
     // printf("消息类型：%d, 消息长度: %d, 消息时间戳:%d, 消息数量：%d\n", msg.msg_header.msg_type, msg.msg_header.msg_length, msg.msg_header.timestamp, msg.msg_header.total_count);
     if(send(sockfd, (void *)&msg, sizeof(msg), 0) == -1)

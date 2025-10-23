@@ -11,14 +11,16 @@ using namespace std;
 
 class data_handler {
 public:
-    data_handler();
+    data_handler(const char *db_path);
     ~data_handler();
     int login_check(LOGIN_MSG *login_msg, RESPONSE_MSG *response_msg);
-    
+    int register_data_handle(REGISTET_MSG *register_msg, RESPONSE_MSG *response_msg);
+
 public:
 
 private:
     sqlite3 *m_db;
+    const char *m_db_path;
 };
 
 #endif // DATA_HANDLER_H

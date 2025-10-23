@@ -8,7 +8,7 @@ int main(int argc, char *argv[])
         printf("Usage:%s serverip port\n", argv[0]);
         return -1;
     }
-    data_handler datahandler;
+    data_handler datahandler("new.db");
     Business business(&datahandler);
     TcpServer tcpserver(argv[1], argv[2], &business);
 

@@ -6,6 +6,11 @@
 #define PASSWORD_SIZE 64
 #define RESPONSE_SIZE 128
 
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <string>
+
 // 消息类型枚举
 enum MessageType {
     LOGIN_REQUEST = 1,           // 登录请求
@@ -24,15 +29,6 @@ enum MessageType {
     MSG_CHAT_TEXT = 21,               // 文本聊天
     MSG_CHAT_FILE = 22,               // 文件传输
 };
-
-///  ---------------  测试用  --------------  //
-typedef struct {
-    char account_num[128];
-    char password[128];
-    int type;
-    char query_word[128];
-}MSG_INFO;
-
 
 // 消息头定义
 typedef struct{
@@ -138,5 +134,13 @@ typedef struct{
     char response[RESPONSE_SIZE];
     int success_flag;
 }RESPONSE_MSG;
+
+class TimeUtils{
+public:
+    // 获取当前时间字符串
+    static std::string getCurrentTimeString(const std::string& format = "%Y-%m-%d %H:%M:%S");
+
+};
+
 
 #endif // PROTOCOL_H
