@@ -31,20 +31,29 @@ public:
     static int callback_query(void *arg, int col, char** value, char** key);
     int search_user(sqlite3 *db, LOGIN_MSG *login_msg);
 
-    int do_register(int sockfd, REGISTET_MSG *register_msg, RESPONSE_MSG *response_msg);
-    int do_login(int sockfd, LOGIN_MSG *login_msg, RESPONSE_MSG *response_msg);
-
+    // 接收消息函数
     int receive_message_header(int sockfd, MSG_HEADER *header, Business *business);
-    int handle_login_message(int clientfd, MSG_HEADER *msg_header);
-    int handle_register_message(int clientfd, MSG_HEADER *msg_header);
-
     template<typename T>
     int receive_remain_message(int clientfd, MSG_HEADER *msg_header, T *total_msg);
+
+    // 处理用户各种消息函数
+    int handle_AccountQuery_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_login_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_register_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_addfriend_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header, int choice);
+
+    // 执行用户操作指令函数
+    int do_query(int sockfd, ACCOUNT_QUERY_MSG *query_msg, USER_QUERY_RESPONSE_MSG *response_msg);
+    int do_register(int sockfd, REGISTET_MSG *register_msg, RESPONSE_MSG *response_msg);
+    int do_login(int sockfd, LOGIN_MSG *login_msg, USER_QUERY_RESPONSE_MSG *response_msg, USER_INFO *my_user_info);
+    int do_addfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg);
+    int do_acceptfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg, int choice);
 
 public:
     GThreadPool *m_pool;
     int online_user_count = 0;
-    map <int, string> user_client;
+    map <USER_INFO, int> user_client;
 
 private:
     data_handler *m_db_handler;

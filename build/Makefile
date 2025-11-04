@@ -177,6 +177,30 @@ src/business.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/business.cpp.s
 .PHONY : src/business.cpp.s
 
+src/data_handler.o: src/data_handler.cpp.o
+.PHONY : src/data_handler.o
+
+# target to build an object file
+src/data_handler.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/data_handler.cpp.o
+.PHONY : src/data_handler.cpp.o
+
+src/data_handler.i: src/data_handler.cpp.i
+.PHONY : src/data_handler.i
+
+# target to preprocess a source file
+src/data_handler.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/data_handler.cpp.i
+.PHONY : src/data_handler.cpp.i
+
+src/data_handler.s: src/data_handler.cpp.s
+.PHONY : src/data_handler.s
+
+# target to generate assembly for a file
+src/data_handler.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/main.dir/build.make CMakeFiles/main.dir/src/data_handler.cpp.s
+.PHONY : src/data_handler.cpp.s
+
 src/protocol.o: src/protocol.cpp.o
 .PHONY : src/protocol.o
 
@@ -240,6 +264,9 @@ help:
 	@echo "... src/business.o"
 	@echo "... src/business.i"
 	@echo "... src/business.s"
+	@echo "... src/data_handler.o"
+	@echo "... src/data_handler.i"
+	@echo "... src/data_handler.s"
 	@echo "... src/protocol.o"
 	@echo "... src/protocol.i"
 	@echo "... src/protocol.s"
