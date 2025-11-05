@@ -37,25 +37,25 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     // 根据消息类型处理消息
     switch (msg_header.msg_type)
     {
-    case REGISTER_REQUEST:
+    case REGISTER_REQUEST:         // 处理用户注册请求
         // printf("即将注册用户,账号:%s  密码:%s\n", msg_info.account_num, msg_info.password);
         self->handle_register_message(clientfd, &msg_header);
         break;
-    case LOGIN_REQUEST:
+    case LOGIN_REQUEST:           // 处理用户登录请求
         // printf("-------------------执行登录-----------\n");
         self->handle_login_message(clientfd, &msg_header);
         break;
-    case ACCOUNT_QUERY_REQUEST:
+    case ACCOUNT_QUERY_REQUEST:       // 处理用户查询请求
         printf("查询用户\n");
         self->handle_AccountQuery_message(clientfd, &msg_header);
         break;
-    case ADD_FRIEND_REQUEST:
+    case ADD_FRIEND_REQUEST:        // 处理用户添加好友请求
         self->handle_addfriend_message(clientfd, &msg_header);
         break;
-    case ACCEPT_FRIEND_ASK:
+    case ACCEPT_FRIEND_ASK:        // 处理用户通过好友申请
         self->handle_acceptfriend_message(clientfd, &msg_header, ACCEPT_FRIEND_ASK);
         break;
-    case REJECT_FRIEND_ASK:
+    case REJECT_FRIEND_ASK:       // 处理用户拒绝好友申请
         self->handle_acceptfriend_message(clientfd, &msg_header, REJECT_FRIEND_ASK);
         break;
     default:
@@ -189,6 +189,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
 {
     USER_INFO my_user_info;
 
+    // *********************** 登录检查 ***************************
     // 接受剩余数据
     LOGIN_MSG login_msg;
 
@@ -214,6 +215,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
         return -1;
     }
 
+    // *********************** 拉取用户 好友申请列表 ***************************
     //  拉取用户好友申请列表
     FRIEND_ASK_NOTICE_MSG *friend_ask_notice_msgs = nullptr;  
     if(m_db_handler->get_addfriend_ask(login_msg.user_account, &friend_ask_notice_msgs) != 0)  // 注意！！！ 这里得是二级指针，因为需要修改其地址值
@@ -229,6 +231,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
 
     free(friend_ask_notice_msgs);
 
+    // *********************** 拉取用户 好友列表    向在线好友发送上线通知  ***************************
     //  构造好友上线通知消息
     FRIEND_LIST_MSG* friend_online_notice = nullptr;
     if(m_db_handler->consturct_friend_notice_msg(&my_user_info, &friend_online_notice) != 0) 
@@ -270,6 +273,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
     free(friend_list_msg);
     free(friend_online_notice);
 
+    // *********************** 拉取完毕，向用户发送登录响应  ***************************
     //  发送用户登录响应
     if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
     {
@@ -344,6 +348,7 @@ int Business:: handle_AccountQuery_message(int clientfd, MSG_HEADER *msg_header)
 
 int Business:: handle_addfriend_message(int clientfd, MSG_HEADER *msg_header)
 {
+    // ***********************  处理用户添加好友请求  【此时用户为添加方】***************************
     // 接受剩余数据
     ADD_FRIEND_MSG add_friend_msg;
 
@@ -372,11 +377,18 @@ int Business:: handle_addfriend_message(int clientfd, MSG_HEADER *msg_header)
     do_addfriend(clientfd, &add_friend_msg, &response_msg);
     // do_register(clientfd, &register_msg, &response_msg);
 
-    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)     //  向操作用户发送添加好友是否成功的响应
     {
         printf("向用户:%s 发送添加好友响应失败", add_friend_msg.user_account);
     }
 
+    printf("success_flag:%d\n", response_msg.success_flag);
+    if (response_msg.success_flag == 0)      // 如果此次添加失败，则直接返回
+    {
+        return -1;
+    }
+
+    // ***********************  拉取这条申请消息，向用户，好友分别发送这条申请消息，进行客户端UI更新 ***************************
     //  拉取用户好友单条申请消息
     FRIEND_ASK_NOTICE_MSG *friend_ask_notice_msg = nullptr;  
     if(m_db_handler->consutrct_friend_ask_notice_msg(&add_friend_msg, &friend_ask_notice_msg) != 0)  
@@ -385,6 +397,7 @@ int Business:: handle_addfriend_message(int clientfd, MSG_HEADER *msg_header)
         return -1;
     }
 
+ 
     // 向添加好友的用户发送  好友申请单条消息
     if(send(clientfd, friend_ask_notice_msg, sizeof(MSG_HEADER)+friend_ask_notice_msg->msg_header.msg_length, 0) == -1)
     {
@@ -394,6 +407,8 @@ int Business:: handle_addfriend_message(int clientfd, MSG_HEADER *msg_header)
     USER_INFO friend_info;
     strcpy(friend_info.user_account, friend_ask_notice_msg->asks[0].friend_acccount);
     strcpy(friend_info.user_name, friend_ask_notice_msg->asks[0].friend_name);
+    // friend_ask_notice_msg->asks[0].friend_status = 0;
+    printf("发送过去的好友状态为：%d", friend_ask_notice_msg->asks[0].friend_status);
 
     // 向被用户添加的好友（如果在线的话）发送  好友申请单条消息
     auto it = user_client.find(friend_info);
@@ -417,6 +432,7 @@ int Business:: handle_addfriend_message(int clientfd, MSG_HEADER *msg_header)
 
 int Business:: handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header, int choice)
 {
+    // ***********************  处理用户同意/拒绝好友申请 消息  【此时用户为被添加方】***************************
     // 接受剩余数据
     ADD_FRIEND_MSG add_friend_msg;
 
@@ -433,7 +449,7 @@ int Business:: handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header,
     }else{
         response_msg.msg_header.msg_type = FRIEND_REJECT_RESPONSE;
     }
-
+    
     response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
     response_msg.msg_header.timestamp = time(NULL);
 
@@ -447,23 +463,75 @@ int Business:: handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header,
     do_acceptfriend(clientfd, &add_friend_msg, &response_msg, choice);
     // do_register(clientfd, &register_msg, &response_msg);
 
-    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)   //  向操作用户发送处理好友申请是否成功的响应
     {
-        printf("向用户:%s 发送添加好友响应失败", add_friend_msg.user_account);
+        printf("向用户:%s 发送处理好友申请 响应失败", add_friend_msg.user_account);
     }
 
+
+    // **********************   向双方发送好友申请更新消息，更新客户端UI  ************************
+    //  拉取用户好友单条申请消息
+    FRIEND_ASK_NOTICE_MSG *friend_ask_notice_msg = nullptr;  
+    if(m_db_handler->consutrct_friend_ask_notice_msg(&add_friend_msg, &friend_ask_notice_msg) != 0)  
+    {
+        free(friend_ask_notice_msg);
+        return -1;
+    }
+
+    // 向  处理好友请求的用户（被添加方） 发送  好友申请单条消息
+    if(send(clientfd, friend_ask_notice_msg, sizeof(MSG_HEADER)+friend_ask_notice_msg->msg_header.msg_length, 0) == -1)
+    {
+        printf("向用户:%s 推送好友处理消息失败\n", add_friend_msg.friend_account);
+    }
+    
+    USER_INFO friend_info;
+    strcpy(friend_info.user_account, friend_ask_notice_msg->asks[0].user_account);
+    strcpy(friend_info.user_name, friend_ask_notice_msg->asks[0].user_name);
+    // friend_ask_notice_msg->asks[0].friend_status = 0;
+    printf("发送过去的好友状态为：%d", friend_ask_notice_msg->asks[0].friend_status);
+
+    // 向  被用户处理申请请求的好友（添加方）（如果在线的话）发送  好友申请处理更新单条消息
+    auto it = user_client.find(friend_info);
+
+    if (it != user_client.end())
+    {
+        friend_info.status = 1;
+        auto& friend_client = it->second;
+        if(send(friend_client, friend_ask_notice_msg, sizeof(MSG_HEADER)+friend_ask_notice_msg->msg_header.msg_length, 0) == -1)
+        {
+            printf("向用户:%s 推送好友添加通知消息失败\n", add_friend_msg.user_account);
+        }
+
+    }else{
+        friend_info.status = 0;
+    }
+
+    free(friend_ask_notice_msg);
+
+    // *****************************   如果添加成功，则需向双方分别发送好友列表更新消息，更新客户端好友列表 *************************************
 
     if(choice == ACCEPT_FRIEND_ASK){
         ACCOUNT_QUERY_MSG user_query_msg, friend_query_msg;
         strcpy(user_query_msg.query_account, add_friend_msg.friend_account);
         stpcpy(user_query_msg.user_account, add_friend_msg.friend_account);
 
-        strcpy(friend_query_msg.query_account, add_friend_msg.user_account);
-        stpcpy(friend_query_msg.user_account, add_friend_msg.friend_account);
+        strcpy(friend_query_msg.query_account, add_friend_msg.user_account);   // add_friend_msg里的user_account是添加这个用户的好友
+        stpcpy(friend_query_msg.user_account, add_friend_msg.friend_account);  // add_friend_msg里的friend_account才是这里的用户
 
         USER_QUERY_RESPONSE_MSG user_query_response_msg, friend_query_response_msg;
-        m_db_handler->query_user(&user_query_msg, &user_query_response_msg);
-        m_db_handler->query_user(&friend_query_msg, &friend_query_response_msg);
+        m_db_handler->query_user(&user_query_msg, &user_query_response_msg);        // 查询这个用户的信息，通知其好友使用
+        m_db_handler->query_user(&friend_query_msg, &friend_query_response_msg);    // 查询用户的这个好友信息，通知用户使用
+
+  
+        //  构造用户状态通知消息
+        FRIEND_LIST_MSG* user_status_notice = nullptr;
+        if(m_db_handler->consturct_friend_notice_msg(&user_query_response_msg.user_info, &user_status_notice) != 0) 
+        {
+            free(user_status_notice);
+            return -1;
+        }
+
+        user_status_notice->friends[0].status = 1;
 
         auto it = user_client.find(friend_query_response_msg.user_info);
 
@@ -472,10 +540,11 @@ int Business:: handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header,
             friend_query_response_msg.user_info.status = 1;
             auto& friend_client = it->second;
             
-            // if(send(friend_client, friend_outline_notice, sizeof(MSG_HEADER)+friend_outline_notice->msg_header.msg_length, 0) == -1)
-            // {
-            //     printf("向好友：%s 推送用户:%s 离线提醒消息失败\n", friend_list_msg->friends[i].user_account, user_info.user_account);
-            // }
+            // 如果好友在线，则提醒它好友申请通过/拒绝通知
+            if(send(friend_client, user_status_notice, sizeof(MSG_HEADER)+user_status_notice->msg_header.msg_length, 0) == -1)
+            {
+                printf("向用户：%s 推送好友:%s 状态消息失败\n", add_friend_msg.user_account, add_friend_msg.friend_account);
+            }
 
         }else{
             friend_query_response_msg.user_info.status = 0;
@@ -489,9 +558,10 @@ int Business:: handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header,
             return -1;
         }
 
+        // 向用户发送好友申请通过/拒绝通知
         if(send(clientfd, friend_status_notice, sizeof(MSG_HEADER)+friend_status_notice->msg_header.msg_length, 0) == -1)
         {
-            // printf("向好友：%s 推送用户:%s 离线提醒消息失败\n", friend_list_msg->friends[i].user_account, user_info.user_account);
+            printf("向用户：%s 推送好友:%s 状态消息失败\n", add_friend_msg.friend_account, add_friend_msg.user_account);
         }
 
         free(friend_status_notice);

@@ -146,6 +146,7 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
     int nrow;
     int ncolumn;
 
+    // ************************  获取到用户昵称，用于填充添加好友消息字段  ******************************
     sprintf(sql, "select *from user_info where (user_account='%s');", add_friend_msg->user_account);
     if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
     {
@@ -158,6 +159,7 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
     char user_name[NAME_SIZE];
     strcpy(user_name, resultp[ncolumn]);
 
+    // ************************  查询添加的好友账号是否存在  ******************************
     resultp = NULL;
     nrow = 0;
     printf("friend_account:%s\n", add_friend_msg->friend_account);
@@ -181,9 +183,11 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
     char friend_name[NAME_SIZE];
     strcpy(friend_name, resultp[ncolumn]);
 
+
+    // ************************  查询是否已经存在添加记录（针对正在等待回应status:0/已添加status：1）, 用户为添加者时 ******************************
     resultp = NULL;
     errmsg = NULL;
-    sprintf(sql, "select *from friend_info where (friend_account='%s' and user_account='%s');", add_friend_msg->friend_account, add_friend_msg->user_account);
+    sprintf(sql, "select *from friend_info where (friend_account='%s' and user_account='%s' and friend_status!=-1);", add_friend_msg->friend_account, add_friend_msg->user_account);
     if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
     {
         printf("%s", errmsg);
@@ -214,7 +218,8 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
     resultp = NULL;
     errmsg = NULL;
 
-    sprintf(sql, "select *from friend_info where (friend_account='%s' and user_account='%s');", add_friend_msg->user_account, add_friend_msg->friend_account);
+    // ************************  查询是否已经存在添加记录（针对正在等待回应status:0/已添加status：1）, 用户为被添加者时 ******************************
+    sprintf(sql, "select *from friend_info where (friend_account='%s' and user_account='%s' and friend_status!=-1);", add_friend_msg->user_account, add_friend_msg->friend_account);
     if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
     {
         printf("%s", errmsg);
@@ -241,7 +246,8 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
         return -1;
     }
 
-    string now_time = TimeUtils::getCurrentTimeString("%Y-%m-%d %H:%M");
+    // ************************ 通过所有检查后，说明不存在status!=-1的记录，则进行插入新添加记录 ******************************
+    string now_time = TimeUtils::getCurrentTimeString("%Y-%m-%d %H:%M:%S");
     sprintf(sql, "insert into friend_info values('%s', '%s', '%s', '%s', '%d', '%s');", add_friend_msg->user_account, user_name ,add_friend_msg->friend_account, friend_name, 0, now_time.c_str());
     int res = sqlite3_exec(m_db, sql, NULL, NULL, &errmsg);
     if (res != SQLITE_OK)
@@ -267,6 +273,7 @@ int data_handler::get_addfriend_ask(char *user_account, FRIEND_ASK_NOTICE_MSG **
     int nrow;
     int ncolumn;
 
+    // ************************  查询用户user_account的所有好友添加记录，不管是添加方还是被添加方，不管添加状态如何 ******************************
     sprintf(sql, "select *from friend_info where (user_account='%s' or friend_account='%s');", user_account, user_account);
     if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
     {
@@ -317,11 +324,12 @@ int data_handler:: updata_friend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RES
     char sql[1024];
     char *errmsg = NULL;
 
+    // ************************  查询用户的好友添加记录(作为被添加方)，添加状态为正在验证：status：0 ******************************
     if (choice == ACCEPT_FRIEND_ASK)
     {
-        sprintf(sql, "update friend_info set friend_status=1 where (friend_account='%s' and user_account='%s');", add_friend_msg->friend_account, add_friend_msg->user_account);
+        sprintf(sql, "update friend_info set friend_status=1 where (friend_account='%s' and user_account='%s' and friend_status=0);", add_friend_msg->friend_account, add_friend_msg->user_account);
     }else{
-        sprintf(sql, "update friend_info set friend_status=-1 where (friend_account='%s' and user_account='%s');", add_friend_msg->friend_account, add_friend_msg->user_account);
+        sprintf(sql, "update friend_info set friend_status=-1 where (friend_account='%s' and user_account='%s' and friend_status=0);", add_friend_msg->friend_account, add_friend_msg->user_account);
     }
 
     int res = sqlite3_exec(m_db, sql, NULL, NULL, &errmsg);
@@ -348,6 +356,7 @@ int data_handler::get_friendlist(char *user_account, FRIEND_LIST_MSG **friend_li
     int nrow;
     int ncolumn;
 
+    // ************************  查询用户的好友列表，即不论是添加方还是被添加方，状态为已添加 ******************************
     sprintf(sql, "select *from friend_info where (user_account='%s' or friend_account='%s') and friend_status=1;", user_account, user_account);
     if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
     {
@@ -421,7 +430,8 @@ int data_handler::consutrct_friend_ask_notice_msg(ADD_FRIEND_MSG *add_friend_msg
     int nrow;
     int ncolumn;
 
-    sprintf(sql, "select *from friend_info where (user_account='%s' or friend_account='%s');", add_friend_msg->user_account, add_friend_msg->friend_account);
+    // ************************  查询时间最近的这条好友添加记录   用于好友新申请、好友通过/拒绝 后发送好友申请列表的更新  ******************************
+    sprintf(sql, "select *from friend_info where (user_account='%s' and friend_account='%s') order by add_time desc limit 1;", add_friend_msg->user_account, add_friend_msg->friend_account);
     if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
     {
         printf("%s", errmsg);
@@ -449,6 +459,13 @@ int data_handler::consutrct_friend_ask_notice_msg(ADD_FRIEND_MSG *add_friend_msg
     strcpy((*friend_ask_notice_msg)->asks[0].friend_name, resultp[index++]);
     (*friend_ask_notice_msg)->asks[0].friend_status = atoi(resultp[index++]);
     strcpy((*friend_ask_notice_msg)->asks[0].add_time, resultp[index++]);
+
+
+    printf("添加账号：%s\t添加账号昵称: %s\t被加账号: %s\t被加昵称: %s\t添加状态:%d\t添加时间: %s\t\n", (*friend_ask_notice_msg)->asks[0].user_account, 
+    (*friend_ask_notice_msg)->asks[0].user_name,
+    (*friend_ask_notice_msg)->asks[0].friend_acccount,(*friend_ask_notice_msg)->asks[0].friend_name,
+    (*friend_ask_notice_msg)->asks[0].friend_status, (*friend_ask_notice_msg)->asks[0].add_time);
+
 
     sqlite3_free_table(resultp);
     return 0;
