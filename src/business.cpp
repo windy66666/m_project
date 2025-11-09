@@ -58,6 +58,14 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     case REJECT_FRIEND_ASK:       // 处理用户拒绝好友申请
         self->handle_acceptfriend_message(clientfd, &msg_header, REJECT_FRIEND_ASK);
         break;
+    case SEND_CHAT_MSG:           // 处理聊天消息 
+        self->handle_chat_message(clientfd, &msg_header);
+        break;
+    case HISTORY_MSG_REQUEST:      // 拉取历史消息
+        self->handle_HistoryMsgGet_message(clientfd, &msg_header);
+    case UPDATE_CHAT_MSG_REQUEST:    // 更新消息阅读状态
+        self->handle_updateMsg_message(clientfd, &msg_header);
+        break;
     default:
         break;
     }
@@ -570,7 +578,160 @@ int Business:: handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header,
     return 0;
 }
 
+int Business:: handle_chat_message(int clientfd, MSG_HEADER * msg_header)
+{
+    int total_size = sizeof(MSG_HEADER) + msg_header->msg_length;
+    CHAT_MSG *chat_msg = (CHAT_MSG*)malloc(total_size);
 
+    int remain_data = msg_header->msg_length;
+    
+    memcpy(&chat_msg->msg_header, msg_header, sizeof(MSG_HEADER));
+
+    char *msg_data = (char*)(chat_msg) + sizeof(MSG_HEADER); 
+    int recv_size = recv(clientfd, msg_data, remain_data, MSG_WAITALL);
+    if (recv_size != remain_data)
+    {
+        printf("消息不完整\n");
+        return -1;
+    }
+
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = SEND_CHAT_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+
+    printf("用户:%s 即将给用户:%s  发送消息\n", chat_msg->sender_account, chat_msg->receiver_account);
+    do_send_chat_msg(clientfd, chat_msg, &response_msg);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    {
+        printf("向用户:%s 发送 消息发送响应失败", chat_msg->sender_account);
+    }
+
+    // 如果接收者用户在线，则立马转发消息给ta
+    USER_INFO friend_info;
+    strcpy(friend_info.user_account, chat_msg->receiver_account);
+
+    chat_msg->msg_header.msg_type = CHAT_MSG_NOTICE;
+    auto it = user_client.find(friend_info);
+
+    if (it != user_client.end())
+    {
+        auto& friend_client = it->second;
+        if(send(friend_client, chat_msg, sizeof(MSG_HEADER)+chat_msg->msg_header.msg_length, 0) == -1)
+        {
+            printf("向用户:%s 转发聊天消息失败\n", chat_msg->receiver_account);
+        }
+    }
+
+    return 0;
+}
+
+int Business::handle_HistoryMsgGet_message(int clientfd, MSG_HEADER * msg_header)
+{
+    // 接受剩余数据
+    HISTORY_MSG_GET HisrotyMsg_get_msg;
+
+    if(receive_remain_message(clientfd, msg_header, &HisrotyMsg_get_msg) != 0)
+    {
+        return -1;
+    }
+
+    printf("即将获取用户:%s 历史消息\n", HisrotyMsg_get_msg.user_account);
+
+    vector<CHAT_MSG*> chat_msgs;
+    int res = m_db_handler->get_history_msg_handle(&HisrotyMsg_get_msg, chat_msgs);
+    if (res <= 0) {
+        printf("用户没有历史消息或查询失败\n");
+        return 0;
+    }
+
+    int sent_count = 0;
+    int failed_count = 0;
+
+    for (CHAT_MSG* chat_msg : chat_msgs) {
+        size_t msg_size = sizeof(MSG_HEADER) + chat_msg->msg_header.msg_length;
+        int bytes_sent = send(clientfd, (const char*)chat_msg, msg_size, 0);
+        
+        if (bytes_sent <= 0) {
+            printf("发送消息失败，消息ID: %lld\n", chat_msg->chat_msg_id);
+            failed_count++;
+        } else {
+            sent_count++;
+        }
+        
+        // 释放当前消息内存
+        free(chat_msg);
+        
+        // 添加小延迟，避免网络拥堵（可选）
+        // usleep(1000); // 1ms 延迟
+    }
+    
+    // 清空vector
+    chat_msgs.clear();
+    printf("历史消息发送完成: 成功 %d/%d, 失败 %d\n", 
+           sent_count, res, failed_count);
+
+    return (failed_count == 0) ? 0 : -1;    
+}
+
+int Business::handle_updateMsg_message(int clientfd, MSG_HEADER *msg_header)
+{
+    int total_size = sizeof(MSG_HEADER) + msg_header->msg_length;
+    
+    // 使用 new 创建对象，会调用构造函数
+    UPDATE_CHAT_MSG *msg = new UPDATE_CHAT_MSG;
+    
+    // 复制消息头
+    msg->msg_header = *msg_header;
+    
+    // 接收消息数据
+    std::vector<char> buffer(msg_header->msg_length);
+    int recv_size = recv(clientfd, buffer.data(), msg_header->msg_length, MSG_WAITALL);
+    if (recv_size != msg_header->msg_length)
+    {
+        printf("消息不完整\n");
+        delete msg; // 记得释放内存
+        return -1;
+    }
+    
+    // 解析消息ID列表
+    parseMessageIds(buffer, msg->chat_msgs);
+    
+    printf("更新消息阅读状态，共 %zu 条消息\n", msg->chat_msgs.size());
+    m_db_handler->update_chat_msg_status(msg->chat_msgs);
+    
+    delete msg; // 释放内存
+    return 0;
+}
+
+// 解析消息ID的辅助函数
+void Business::parseMessageIds(const std::vector<char>& buffer, std::vector<long long>& chat_msgs)
+{
+    const char* data = buffer.data();
+    size_t size = buffer.size();
+    
+    // 假设协议格式：消息数量(4字节) + 多个消息ID(每个8字节)
+    if (size < sizeof(int)) {
+        return;
+    }
+    
+    int count = *(int*)data;
+    data += sizeof(int);
+    size -= sizeof(int);
+    
+    if (size < count * sizeof(long long)) {
+        return;
+    }
+    
+    chat_msgs.resize(count);
+    for (int i = 0; i < count; i++) {
+        chat_msgs[i] = *(long long*)data;
+        data += sizeof(long long);
+    }
+}
+    
 
 int Business:: do_register(int sockfd, REGISTET_MSG *register_msg, RESPONSE_MSG *response_msg)
 {
@@ -656,4 +817,20 @@ int Business:: do_acceptfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPO
     printf("%s 处理用户 %s 好友请求成功\n", add_friend_msg->friend_account, add_friend_msg->user_account);
 
     return 0;
+}
+
+int Business:: do_send_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg)
+{
+    if(m_db_handler->chatmsg_data_handle(chat_msg, response_msg) != 0)
+    {
+        response_msg->success_flag = 0;
+        strcpy(response_msg->response, "发送消息失败\n");
+        return -1;
+    }
+    
+    strcpy(response_msg->response, "发送成功!\n");
+    response_msg->success_flag = 1;
+
+    printf("%s发送成功\n", chat_msg->sender_account);
+    return 1;
 }

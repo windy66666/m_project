@@ -470,3 +470,151 @@ int data_handler::consutrct_friend_ask_notice_msg(ADD_FRIEND_MSG *add_friend_msg
     sqlite3_free_table(resultp);
     return 0;
 }
+
+int data_handler::chatmsg_data_handle(CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg)
+{
+    char *errmsg = NULL;
+    sqlite3_stmt* stmt = nullptr;
+    
+    // SQL 插入语句
+    const char* sql = "INSERT INTO msg_info_from_friend (sendtime, sender_account, receiver_account, msg_type, file_size, read_status, msg_content) "
+                     "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+    // 准备 SQL 语句
+    int rc = sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        printf("准备SQL语句失败:%s\n", sqlite3_errmsg(m_db));
+        return -1;
+    }
+
+    // 绑定参数
+    sqlite3_bind_int(stmt, 1, chat_msg->msg_header.timestamp);  // sendtime
+    sqlite3_bind_text(stmt, 2, chat_msg->sender_account, -1, SQLITE_TRANSIENT);  // sender_account
+    sqlite3_bind_text(stmt, 3, chat_msg->receiver_account, -1, SQLITE_TRANSIENT); // receiver_account
+    sqlite3_bind_int(stmt, 4, chat_msg->content_type);   // msg_type
+    sqlite3_bind_int(stmt, 5, chat_msg->file_size);    // file_size
+    sqlite3_bind_int(stmt, 6, chat_msg->read_status);        // read_status
+    sqlite3_bind_text(stmt, 7, chat_msg->content, -1, SQLITE_TRANSIENT); // msg_content
+    
+    // 执行插入
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        printf("插入消息失败:%s\n", sqlite3_errmsg(m_db));
+        sqlite3_finalize(stmt);
+        return false;
+    }
+
+    // 获取插入的消息ID
+    sqlite3_int64 outMessageId = sqlite3_last_insert_rowid(m_db);
+    chat_msg->chat_msg_id = outMessageId;
+    
+    // 清理语句
+    sqlite3_finalize(stmt);
+    
+    printf("插入消息成功，消息ID:%lld\n", outMessageId);
+
+    return 0;
+}
+
+int data_handler::get_history_msg_handle(HISTORY_MSG_GET *HistoryMsgGet_msg , vector<CHAT_MSG*> &chat_msgs)
+{
+    char sql[1024];
+    char *errmsg = NULL;
+    char **resultp;
+    int nrow;
+    int ncolumn;
+
+    sprintf(sql, "select *from msg_info_from_friend where (sender_account='%s' or receiver_account='%s');", HistoryMsgGet_msg->user_account, HistoryMsgGet_msg->user_account);
+    if(sqlite3_get_table(m_db, sql, &resultp, &nrow, &ncolumn, &errmsg) != SQLITE_OK)
+    {
+        printf("%s", errmsg);
+        sqlite3_free(errmsg);
+        errmsg = NULL;
+        return -1;
+    }
+
+    int index = ncolumn;
+    for (int i = 0; i < nrow; i++)
+    {
+        // 读取数据库字段
+        int chat_msg_id = atoi(resultp[index++]);
+        int sendtime = atoi(resultp[index++]);
+        const char* sender_account = resultp[index++];
+        const char* receiver_account = resultp[index++];
+        int msg_type = atoi(resultp[index++]);
+        int file_size = atoi(resultp[index++]);
+        int read_status = atoi(resultp[index++]);
+        const char* msg_content = resultp[index++];
+
+        // 计算 CHAT_MSG 大小
+        size_t content_length = strlen(msg_content) + 1;
+        size_t total_size = offsetof(CHAT_MSG, content) + content_length;
+
+        // 分配内存
+        CHAT_MSG* chat_msg = (CHAT_MSG*)malloc(total_size);
+        if (!chat_msg) {
+            printf("内存分配失败，跳过消息 ID: %d\n", chat_msg_id);
+            continue;
+        }
+
+        // 初始化内存
+        memset(chat_msg, 0, total_size);
+
+        // 填充消息头
+        chat_msg->msg_header.msg_type = CHAT_MSG_NOTICE;
+        chat_msg->msg_header.msg_length = total_size - sizeof(MSG_HEADER);
+        chat_msg->msg_header.timestamp = sendtime;
+        chat_msg->msg_header.total_count = 0;
+        
+        // 填充消息内容
+        chat_msg->chat_msg_id = chat_msg_id;
+        strncpy(chat_msg->sender_account, sender_account, ACCOUNT_SIZE-1);
+        strncpy(chat_msg->receiver_account, receiver_account, ACCOUNT_SIZE-1);
+        chat_msg->content_type = msg_type;
+        chat_msg->file_size = file_size;
+        chat_msg->read_status = read_status;
+        strncpy(chat_msg->content, msg_content, content_length-1);
+        
+        // 添加到列表
+        chat_msgs.push_back(chat_msg);
+    }
+    
+    printf("历史消息查询完成，共 %d 条消息\n", nrow);
+    sqlite3_free_table(resultp);
+
+    return nrow;
+}
+
+int data_handler::update_chat_msg_status(vector<long long> &chat_msgs)
+{
+
+    int total_count = chat_msgs.size();
+
+    printf("total_count:%d\n", total_count);
+    int failed_count = 0;
+    int success_count = 0;
+    for (int i = 0; i < total_count; i++)
+    {
+        char sql[1024];
+        char *errmsg = NULL;
+        // printf("%lld\n", chat_msgs[i]);
+        sprintf(sql, "update msg_info_from_friend set read_status=1 where (chat_msg_id=%lld);", chat_msgs[i]);
+
+        int res = sqlite3_exec(m_db, sql, NULL, NULL, &errmsg);
+        if (res != SQLITE_OK)
+        {
+            if (errmsg != NULL)
+            {
+                printf("更新消息id:%lld 失败:%s\n", chat_msgs[i], errmsg);
+                sqlite3_free(errmsg);
+                errmsg = NULL;
+            }
+            failed_count++;
+        }
+        success_count++;
+    }
+    
+    printf("消息状态更新完成，完成 %d/%d 条消息，失败 %d 条\n", success_count, total_count, failed_count);
+
+    return 0;
+}

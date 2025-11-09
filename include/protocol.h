@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <cstring>
+#include <vector>
 
 // 消息类型枚举
 enum MessageType {
@@ -26,6 +27,8 @@ enum MessageType {
     SEND_CHAT_MSG = 9,           // 发送聊天消息请求
     ACCEPT_FRIEND_ASK = 10,      // 同意好友申请
     REJECT_FRIEND_ASK = 11,      // 拒绝好友申请
+    HISTORY_MSG_REQUEST = 12,      // 历史消息请求
+    UPDATE_CHAT_MSG_REQUEST = 13,  // 更新消息阅读状态
 
     LOGIN_RESPONSE = 21,          // 登录响应
     REGISTER_RESPONSE = 22,       // 注册响应
@@ -33,13 +36,16 @@ enum MessageType {
     FRIEND_ADD_RESPONSE = 24,     // 好友添加响应
     FRIEND_ACCPET_RESPONSE = 25,  // 好友申请同意响应
     FRIEND_REJECT_RESPONSE = 26,  // 好友申请拒绝响应
-    FRIEND_LIST_RESPONSE = 27,    // 好友列表响应
-    ADD_FRIEND_LIST_RESPONSE = 28,  // 好友添加列表响应
-    GROUP_LIST_RESPONSE = 29,     // 群组列表响应
-    NORMAL_RESPONSE = 30,         // 普通响应
+    FRIEND_LIST_RESPONSE = 27,    // 好友列表响应   获取整个  好友列表
+    ADD_FRIEND_LIST_RESPONSE = 28,  // 好友添加列表响应   获取整个  好友添加列表
+    SEND_CHAT_RESPONSE = 29,       // 发送消息响应
+    GROUP_LIST_RESPONSE = 30,     // 群组列表响应
+    NORMAL_RESPONSE = 31,         // 普通响应
+    HISTORY_MSG_RESPONSE = 32,      // 历史消息响应
 
     ADD_FRIEND_NOTICE = 41,       // 好友添加通知
     FRIEND_STATUS_NOTICE = 42,    // 好友上线/离线通知
+    CHAT_MSG_NOTICE = 43,         // 消息通知
 
     MSG_CHAT_TEXT = 51,               // 文本聊天
     MSG_CHAT_FILE = 52,               // 文件传输
@@ -109,11 +115,24 @@ typedef struct{
     MSG_HEADER msg_header;
     char sender_account[ACCOUNT_SIZE];
     char receiver_account[ACCOUNT_SIZE];
-    int chat_msg_id;     // 记录消息号，便于查找
+    long long chat_msg_id;     // 记录消息号，便于查找
     int content_type;    // 内容类型：文本、图片、文件等
+    int file_size;       // 文件大小
     int read_status;     // 阅读状态
     char content[];
 }CHAT_MSG;
+
+typedef struct {
+    MSG_HEADER msg_header;
+    char user_account[ACCOUNT_SIZE];
+    // char session_id[ACCOUNT_SIZE];  // 会话ID
+} HISTORY_MSG_GET;
+
+//更新消息阅读状态
+typedef struct{
+    MSG_HEADER msg_header;
+    std::vector<long long> chat_msgs;     // 记录消息号，便于查找
+}UPDATE_CHAT_MSG;
 
     // 被动接收：
     // 好友列表、群聊列表、好友上线提醒、好友离线信息、新消息提醒、好友添加提醒

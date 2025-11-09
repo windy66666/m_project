@@ -17,6 +17,7 @@
 #include <iostream>
 #include "protocol.h"
 #include "data_handler.h"
+#include <vector>
 
 using namespace std;
 
@@ -36,12 +37,18 @@ public:
     template<typename T>
     int receive_remain_message(int clientfd, MSG_HEADER *msg_header, T *total_msg);
 
+    // 辅助处理函数
+    void parseMessageIds(const std::vector<char>& buffer, std::vector<long long>& chat_msgs);
+
     // 处理用户各种消息函数
     int handle_AccountQuery_message(int clientfd, MSG_HEADER *msg_header);
     int handle_login_message(int clientfd, MSG_HEADER *msg_header);
     int handle_register_message(int clientfd, MSG_HEADER *msg_header);
     int handle_addfriend_message(int clientfd, MSG_HEADER *msg_header);
     int handle_acceptfriend_message(int clientfd, MSG_HEADER *msg_header, int choice);
+    int handle_chat_message(int clientfd, MSG_HEADER * msg_header);
+    int handle_HistoryMsgGet_message(int clientfd, MSG_HEADER * msg_header);
+    int handle_updateMsg_message(int clientfd, MSG_HEADER * msg_header);
 
     // 执行用户操作指令函数
     int do_query(int sockfd, ACCOUNT_QUERY_MSG *query_msg, USER_QUERY_RESPONSE_MSG *response_msg);
@@ -49,6 +56,7 @@ public:
     int do_login(int sockfd, LOGIN_MSG *login_msg, USER_QUERY_RESPONSE_MSG *response_msg, USER_INFO *my_user_info);
     int do_addfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg);
     int do_acceptfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg, int choice);
+    int do_send_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg);
 
 public:
     GThreadPool *m_pool;
