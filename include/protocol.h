@@ -6,6 +6,7 @@
 #define PASSWORD_SIZE 64
 #define TIME_SIZE 64
 #define RESPONSE_SIZE 128
+#define MAX_AVATAR_SIZE 10240  // 10kB
 
 #include <chrono>
 #include <iomanip>
@@ -67,6 +68,8 @@ typedef struct{
     char user_name[NAME_SIZE];
     char user_account[ACCOUNT_SIZE];
     char user_password[PASSWORD_SIZE];
+    int avatar_size;
+    char avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
 }REGISTET_MSG;
 
 //登录
@@ -141,6 +144,8 @@ typedef struct{
     char user_name[NAME_SIZE];
     char user_account[ACCOUNT_SIZE];
     int status;
+    int avatar_size;
+    char avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
 }USER_INFO;
 
 //群组信息
@@ -168,8 +173,12 @@ typedef struct
 {
     char user_account[ACCOUNT_SIZE];
     char user_name[NAME_SIZE];
+    int user_avatar_size;
+    char user_avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
     char friend_acccount[ACCOUNT_SIZE];
     char friend_name[NAME_SIZE];
+    int friend_avatar_size;
+    char friend_avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
     int friend_status;
     char add_time[TIME_SIZE];
 }FRIEND_ADD_ASK;

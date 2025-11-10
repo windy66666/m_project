@@ -6,7 +6,12 @@
 #include <errno.h>
 #include "protocol.h"
 #include <string.h>
+#include <fstream>
 #include <vector>
+#include <sys/stat.h>  // 用于目录创建
+#include <ctime>       // 用于时间戳
+#include <cstring>     // 用于字符串操作
+
 
 using namespace std;
 
@@ -26,6 +31,9 @@ public:
     int chatmsg_data_handle(CHAT_MSG *chat_msg, RESPONSE_MSG * response_msg);
     int get_history_msg_handle(HISTORY_MSG_GET *HistoryMsgGet_msg , vector<CHAT_MSG*>& chat_msgs);
     int update_chat_msg_status(vector<long long> &chat_msgs);
+    string save_avatar_to_disk(REGISTET_MSG *register_msg);
+    int load_avatar_data(const char* avatar_path, USER_INFO* user_info);
+    int load_avatar_data(const char* avatar_path, FRIEND_ADD_ASK &friend_add_ask, int type);
 
 public:
 

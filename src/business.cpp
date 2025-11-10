@@ -63,6 +63,7 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
         break;
     case HISTORY_MSG_REQUEST:      // 拉取历史消息
         self->handle_HistoryMsgGet_message(clientfd, &msg_header);
+        break;
     case UPDATE_CHAT_MSG_REQUEST:    // 更新消息阅读状态
         self->handle_updateMsg_message(clientfd, &msg_header);
         break;
@@ -193,6 +194,27 @@ int Business:: receive_remain_message(int clientfd, MSG_HEADER *msg_header, T* t
     return 0;
 }
 
+// 添加一个辅助函数来安全发送大数据
+int Business::send_large_data(int sockfd, const void* data, size_t total_size) {
+    const char* buffer = (const char*)data;
+    size_t sent_total = 0;
+    
+    while (sent_total < total_size) {
+        ssize_t sent = send(sockfd, buffer + sent_total, 
+                           total_size - sent_total, 0);
+        if (sent == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 缓冲区满，稍等再试
+                usleep(1000); // 1ms
+                continue;
+            }
+            return -1; // 发送失败
+        }
+        sent_total += sent;
+    }
+    return 0;
+}
+
 int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
 {
     USER_INFO my_user_info;
@@ -232,7 +254,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
         return -1;
     }
 
-    if(send(clientfd, friend_ask_notice_msgs, sizeof(MSG_HEADER)+friend_ask_notice_msgs->msg_header.msg_length, 0) == -1)
+    if(send_large_data(clientfd, friend_ask_notice_msgs, sizeof(MSG_HEADER)+friend_ask_notice_msgs->msg_header.msg_length) == -1)
     {
         printf("向用户:%s 推送好友请求通知消息失败\n", login_msg.user_account);
     }
@@ -255,6 +277,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
         return -1;
     }
 
+
     for (int i = 0; i < friend_list_msg->msg_header.total_count; i++)
     {
         auto it = user_client.find(friend_list_msg->friends[i]);
@@ -273,7 +296,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
         }
     }
 
-    if(send(clientfd, friend_list_msg, sizeof(MSG_HEADER)+friend_list_msg->msg_header.msg_length, 0) == -1)
+    if(send_large_data(clientfd, friend_list_msg, sizeof(MSG_HEADER)+friend_list_msg->msg_header.msg_length) == -1)
     {
         printf("向用户:%s 推送好友请求通知消息失败\n", login_msg.user_account);
     }
@@ -285,7 +308,7 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
     //  发送用户登录响应
     if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
     {
-        printf("向用户:%s 发送登录响应失败", login_msg.user_account);
+        printf("向用户:%s 发送登录响应失败\n", login_msg.user_account);
     }
 
     printf("%s登录成功\n", login_msg.user_account);

@@ -39,6 +39,7 @@ public:
 
     // 辅助处理函数
     void parseMessageIds(const std::vector<char>& buffer, std::vector<long long>& chat_msgs);
+    int send_large_data(int sockfd, const void* data, size_t total_size);
 
     // 处理用户各种消息函数
     int handle_AccountQuery_message(int clientfd, MSG_HEADER *msg_header);

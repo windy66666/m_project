@@ -45,6 +45,15 @@ int data_handler::query_user(ACCOUNT_QUERY_MSG *account_query_msg, USER_QUERY_RE
     strcpy(response_msg->user_info.user_name ,resultp[index]);
     strcpy(response_msg->user_info.user_account ,resultp[index+1]);
 
+    char* db_avatar_path = resultp[index+4];
+    // 处理头像数据
+    if (db_avatar_path != NULL && strlen(db_avatar_path) > 0) {
+        load_avatar_data(db_avatar_path, &response_msg->user_info);
+    } else {
+        response_msg->user_info.avatar_size = 0;
+        memset(response_msg->user_info.avatar_data, 0, MAX_AVATAR_SIZE);
+    }
+
     // response_msg->user_info.status = *(int *)resultp[index+3];
     // printf("用户存储在数据库的密码：%s\n", resultp[index+1]);
     strcpy(response_msg->response, "成功查询到用户\n");
@@ -91,8 +100,70 @@ int data_handler:: login_check(LOGIN_MSG *login_msg, USER_QUERY_RESPONSE_MSG *re
         user_info->status = 1;
         strcpy(user_info->user_account, login_msg->user_account);
         strcpy(user_info->user_name, resultp[index]);
+
+        char* db_avatar_path = resultp[index+4];
+        // 处理头像数据
+        if (db_avatar_path != NULL && strlen(db_avatar_path) > 0) {
+            load_avatar_data(db_avatar_path, &response_msg->user_info);
+        } else {
+            response_msg->user_info.avatar_size = 0;
+            memset(response_msg->user_info.avatar_data, 0, MAX_AVATAR_SIZE);
+        }
+
+        // // 同时填充到user_info参数中（如果调用方需要）
+        // if (user_info != NULL) {
+        //     user_info->status = 1;
+        //     strcpy(user_info->user_account, login_msg->user_account);
+        //     strcpy(user_info->user_name, db_username);
+        //     user_info->avatar_size = response_msg->user_info.avatar_size;
+        //     memcpy(user_info->avatar_data, response_msg->user_info.avatar_data, response_msg->user_info.avatar_size);
+        // }
     }
 
+    return 0;
+}
+
+int data_handler::load_avatar_data(const char* avatar_path, USER_INFO* user_info)
+{
+    if (avatar_path == NULL || strlen(avatar_path) == 0) {
+        user_info->avatar_size = 0;
+        return 0;
+    }
+
+    // 打开头像文件
+    FILE* file = fopen(avatar_path, "rb");
+    if (!file) {
+        printf("无法打开头像文件: %s\n", avatar_path);
+        user_info->avatar_size = 0;
+        return -1;
+    }
+
+    // 获取文件大小
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // 检查文件大小是否超过限制
+    if (file_size > MAX_AVATAR_SIZE) {
+        printf("头像文件过大: %s, 大小: %ld, 限制: %d\n", 
+               avatar_path, file_size, MAX_AVATAR_SIZE);
+        fclose(file);
+        user_info->avatar_size = 0;
+        return -1;
+    }
+
+    // 读取文件内容
+    size_t bytes_read = fread(user_info->avatar_data, 1, file_size, file);
+    fclose(file);
+
+    if (bytes_read != (size_t)file_size) {
+        printf("头像文件读取不完整: %s\n", avatar_path);
+        user_info->avatar_size = 0;
+        return -1;
+    }
+
+    user_info->avatar_size = (int)file_size;
+    printf("成功加载头像: %s, 大小: %d 字节\n", avatar_path, user_info->avatar_size);
     return 0;
 }
 
@@ -121,8 +192,20 @@ int data_handler:: register_data_handle(REGISTET_MSG *register_msg, RESPONSE_MSG
         return -1;
     }
 
+
+    // 处理头像保存
+    std::string avatar_path = "";
+    if (register_msg->avatar_size > 0) {
+        avatar_path = save_avatar_to_disk(register_msg);
+        if (avatar_path.empty()) {
+            printf("头像保存失败，但继续完成用户注册\n");
+            // 可以选择继续注册，只是没有头像
+        }
+    }
+
     string now_time = TimeUtils::getCurrentTimeString("%Y-%m-%d %H:%M");
-    sprintf(sql, "insert into user_info values('%s', '%s', '%s', '%s');", register_msg->user_name, register_msg->user_account, register_msg->user_password, now_time.c_str());
+    sprintf(sql, "insert into user_info values('%s', '%s', '%s', '%s', '%s');", 
+        register_msg->user_name, register_msg->user_account, register_msg->user_password, now_time.c_str(), avatar_path.c_str());
     int res = sqlite3_exec(m_db, sql, NULL, NULL, &errmsg);
     if (res != SQLITE_OK)
     {
@@ -136,6 +219,43 @@ int data_handler:: register_data_handle(REGISTET_MSG *register_msg, RESPONSE_MSG
     }
 
     return 0;
+}
+
+string data_handler::save_avatar_to_disk(REGISTET_MSG *register_msg)
+{
+    const char* avatar_dir = "avatars";
+    
+    // 创建头像目录（如果不存在）
+    struct stat st;
+    if (stat(avatar_dir, &st) != 0) {
+        if (mkdir(avatar_dir, 0755) != 0) {
+            printf("创建头像目录失败: %s\n", avatar_dir);
+            return "";
+        }
+    }
+    
+    // 直接用用户名作为文件名
+    string filename = std::string(register_msg->user_account) + ".jpg";
+    string full_path = std::string(avatar_dir) + "/" + filename;
+    
+    // 保存头像文件
+    FILE* file = fopen(full_path.c_str(), "wb");
+    if (!file) {
+        printf("无法创建头像文件: %s\n", full_path.c_str());
+        return "";
+    }
+    
+    size_t written = fwrite(register_msg->avatar_data, 1, register_msg->avatar_size, file);
+    fclose(file);
+    
+    if (written != static_cast<size_t>(register_msg->avatar_size)) {
+        printf("头像文件写入不完整\n");
+        remove(full_path.c_str());
+        return "";
+    }
+    
+    printf("头像保存成功: %s\n", full_path.c_str());
+    return full_path;
 }
 
 int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg)
@@ -158,6 +278,7 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
 
     char user_name[NAME_SIZE];
     strcpy(user_name, resultp[ncolumn]);
+    char* user_avatar_path = resultp[ncolumn+4];
 
     // ************************  查询添加的好友账号是否存在  ******************************
     resultp = NULL;
@@ -182,6 +303,7 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
 
     char friend_name[NAME_SIZE];
     strcpy(friend_name, resultp[ncolumn]);
+    char* friend_avatar_path = resultp[ncolumn+4];
 
 
     // ************************  查询是否已经存在添加记录（针对正在等待回应status:0/已添加status：1）, 用户为添加者时 ******************************
@@ -248,7 +370,7 @@ int data_handler:: addfriend_data_handle(ADD_FRIEND_MSG *add_friend_msg, RESPONS
 
     // ************************ 通过所有检查后，说明不存在status!=-1的记录，则进行插入新添加记录 ******************************
     string now_time = TimeUtils::getCurrentTimeString("%Y-%m-%d %H:%M:%S");
-    sprintf(sql, "insert into friend_info values('%s', '%s', '%s', '%s', '%d', '%s');", add_friend_msg->user_account, user_name ,add_friend_msg->friend_account, friend_name, 0, now_time.c_str());
+    sprintf(sql, "insert into friend_info values('%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s');", add_friend_msg->user_account, user_name , user_avatar_path, add_friend_msg->friend_account, friend_name,  friend_avatar_path, 0, now_time.c_str());
     int res = sqlite3_exec(m_db, sql, NULL, NULL, &errmsg);
     if (res != SQLITE_OK)
     {
@@ -300,12 +422,13 @@ int data_handler::get_addfriend_ask(char *user_account, FRIEND_ASK_NOTICE_MSG **
     {
         strcpy((*friend_ask_notice_msg)->asks[i].user_account, resultp[index++]);
         strcpy((*friend_ask_notice_msg)->asks[i].user_name, resultp[index++]);
+        load_avatar_data(resultp[index++], (*friend_ask_notice_msg)->asks[i], 1);
         strcpy((*friend_ask_notice_msg)->asks[i].friend_acccount, resultp[index++]);
         strcpy((*friend_ask_notice_msg)->asks[i].friend_name, resultp[index++]);
+        load_avatar_data(resultp[index++], (*friend_ask_notice_msg)->asks[i], 2);
         (*friend_ask_notice_msg)->asks[i].friend_status = atoi(resultp[index++]);
         strcpy((*friend_ask_notice_msg)->asks[i].add_time, resultp[index++]);
     }
-
 
     for (int i = 0; i < (*friend_ask_notice_msg)->msg_header.total_count; i++)
     {
@@ -316,6 +439,76 @@ int data_handler::get_addfriend_ask(char *user_account, FRIEND_ASK_NOTICE_MSG **
     }
 
     sqlite3_free_table(resultp);
+    return 0;
+}
+
+int data_handler::load_avatar_data(const char* avatar_path, FRIEND_ADD_ASK &friend_add_ask, int type)
+{
+    if (avatar_path == NULL || strlen(avatar_path) == 0) {
+        if(type == 1){
+            friend_add_ask.user_avatar_size = 0;
+        }else{
+            friend_add_ask.friend_avatar_size = 0;
+        }
+        return 0;
+    }
+
+    // 打开头像文件
+    FILE* file = fopen(avatar_path, "rb");
+    if (!file) {
+        printf("无法打开头像文件: %s\n", avatar_path);
+        if(type == 1){
+            friend_add_ask.user_avatar_size = 0;
+        }else{
+            friend_add_ask.friend_avatar_size = 0;
+        }
+        return -1;
+    }
+
+    // 获取文件大小
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    // 检查文件大小是否超过限制
+    if (file_size > MAX_AVATAR_SIZE) {
+        printf("头像文件过大: %s, 大小: %ld, 限制: %d\n", 
+               avatar_path, file_size, MAX_AVATAR_SIZE);
+        fclose(file);
+        if(type == 1){
+            friend_add_ask.user_avatar_size = 0;
+        }else{
+            friend_add_ask.friend_avatar_size = 0;
+        }
+        return -1;
+    }
+
+    // 读取文件内容
+    size_t bytes_read;
+    if(type == 1){
+        bytes_read = fread(friend_add_ask.user_avatar_data, 1, file_size, file);
+    }else{
+        bytes_read = fread(friend_add_ask.friend_avatar_data, 1, file_size, file);
+    }
+
+    fclose(file);
+
+    if (bytes_read != (size_t)file_size) {
+        printf("头像文件读取不完整: %s\n", avatar_path);
+        if(type == 1){
+            friend_add_ask.user_avatar_size = 0;
+        }else{
+            friend_add_ask.friend_avatar_size = 0;
+        }
+        return -1;
+    }
+
+    if(type == 1){
+        friend_add_ask.user_avatar_size = (int)file_size;
+    }else{
+        friend_add_ask.friend_avatar_size = (int)file_size;
+    }
+
     return 0;
 }
 
@@ -381,13 +574,15 @@ int data_handler::get_friendlist(char *user_account, FRIEND_LIST_MSG **friend_li
     int index = ncolumn;
     for (int i = 0; i < nrow; i++)
     {
-        if(strcmp(resultp[index], user_account) == 0){
-            strcpy((*friend_list_msg)->friends[i].user_account, resultp[index+2]);
-            strcpy((*friend_list_msg)->friends[i].user_name, resultp[index+3]);
+        if(strcmp(resultp[index], user_account) == 0){     // 添加者为用户
+            strcpy((*friend_list_msg)->friends[i].user_account, resultp[index+3]);   // 好友为对方
+            strcpy((*friend_list_msg)->friends[i].user_name, resultp[index+4]);
+            load_avatar_data(resultp[index+5], &(*friend_list_msg)->friends[i]);
             index += ncolumn;
         }else{
             strcpy((*friend_list_msg)->friends[i].user_account, resultp[index]);
             strcpy((*friend_list_msg)->friends[i].user_name, resultp[index+1]);
+            load_avatar_data(resultp[index+2], &(*friend_list_msg)->friends[i]);
             index += ncolumn;
         }
     }
@@ -403,6 +598,7 @@ int data_handler::get_friendlist(char *user_account, FRIEND_LIST_MSG **friend_li
 
 int data_handler::consturct_friend_notice_msg(USER_INFO *user_info, FRIEND_LIST_MSG **friend_list_msg)
 {
+
     int header_size = sizeof(MSG_HEADER);
     int data_size = sizeof(USER_INFO);
     int total_size = header_size + data_size;
@@ -414,9 +610,10 @@ int data_handler::consturct_friend_notice_msg(USER_INFO *user_info, FRIEND_LIST_
     (*friend_list_msg)->msg_header.timestamp = time(NULL);
     (*friend_list_msg)->msg_header.total_count = 1;
 
-    strcpy((*friend_list_msg)->friends->user_account, user_info->user_account);
-    strcpy((*friend_list_msg)->friends->user_name, user_info->user_name);
-    (*friend_list_msg)->friends->status = user_info->status;
+    // strcpy((*friend_list_msg)->friends->user_account, user_info->user_account);
+    // strcpy((*friend_list_msg)->friends->user_name, user_info->user_name);
+    // (*friend_list_msg)->friends->status = user_info->status;
+    memcpy(&(*friend_list_msg)->friends[0], user_info, sizeof(USER_INFO));
 
     return 0;
 }
@@ -455,10 +652,19 @@ int data_handler::consutrct_friend_ask_notice_msg(ADD_FRIEND_MSG *add_friend_msg
 
     strcpy((*friend_ask_notice_msg)->asks[0].user_account, resultp[index++]);
     strcpy((*friend_ask_notice_msg)->asks[0].user_name, resultp[index++]);
+    load_avatar_data(resultp[index++], (*friend_ask_notice_msg)->asks[0], 1);
     strcpy((*friend_ask_notice_msg)->asks[0].friend_acccount, resultp[index++]);
     strcpy((*friend_ask_notice_msg)->asks[0].friend_name, resultp[index++]);
+    load_avatar_data(resultp[index++], (*friend_ask_notice_msg)->asks[0], 2);
     (*friend_ask_notice_msg)->asks[0].friend_status = atoi(resultp[index++]);
     strcpy((*friend_ask_notice_msg)->asks[0].add_time, resultp[index++]);
+
+    // strcpy((*friend_ask_notice_msg)->asks[0].user_account, resultp[index++]);
+    // strcpy((*friend_ask_notice_msg)->asks[0].user_name, resultp[index++]);
+    // strcpy((*friend_ask_notice_msg)->asks[0].friend_acccount, resultp[index++]);
+    // strcpy((*friend_ask_notice_msg)->asks[0].friend_name, resultp[index++]);
+    // (*friend_ask_notice_msg)->asks[0].friend_status = atoi(resultp[index++]);
+    // strcpy((*friend_ask_notice_msg)->asks[0].add_time, resultp[index++]);
 
 
     printf("添加账号：%s\t添加账号昵称: %s\t被加账号: %s\t被加昵称: %s\t添加状态:%d\t添加时间: %s\t\n", (*friend_ask_notice_msg)->asks[0].user_account, 
