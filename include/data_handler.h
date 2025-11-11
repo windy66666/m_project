@@ -32,8 +32,24 @@ public:
     int get_history_msg_handle(HISTORY_MSG_GET *HistoryMsgGet_msg , vector<CHAT_MSG*>& chat_msgs);
     int update_chat_msg_status(vector<long long> &chat_msgs);
     string save_avatar_to_disk(REGISTET_MSG *register_msg);
+    string save_avatar_to_disk(CREATE_GROUP_MSG *msg);
     int load_avatar_data(const char* avatar_path, USER_INFO* user_info);
     int load_avatar_data(const char* avatar_path, FRIEND_ADD_ASK &friend_add_ask, int type);
+    int load_avatar_data(const char* avatar_path, GROUP_INFO* group_info);
+    int load_avatar_data(const char* avatar_path, GROUP_ADD_ASK &group_add_ask, int type);
+    int create_group_handle(CREATE_GROUP_MSG *msg, RESPONSE_MSG *response_msg);
+    int query_group(ACCOUNT_QUERY_MSG *account_query_msg, GROUP_QUERY_RESPONSE_MSG *response_msg);
+    int addgroup_data_handle(ADD_GROUP_MSG *add_group_msg, RESPONSE_MSG *response_msg);
+    int get_addgroup_ask(char *user_account, GROUP_ASK_NOTICE_MSG **group_ask_notice_msg);
+    int consutrct_group_ask_notice_msg(ADD_GROUP_MSG *add_group_msg, GROUP_ASK_NOTICE_MSG **group_ask_notice_msg);
+    int updata_group_data_handle(ADD_GROUP_MSG *add_group_msg, RESPONSE_MSG *response_msg, int choice);
+    int get_grouplist(char *user_account, GROUP_LIST_MSG **group_list_msg);
+    int consturct_group_notice_msg(GROUP_INFO *group_info, GROUP_LIST_MSG **group_list_msg);
+    int get_users_in_group(vector<USER_INFO> &users_in_group, char* group_account);
+    int group_chatmsg_data_handle(CHAT_MSG *chat_msg, RESPONSE_MSG * response_msg, vector<sqlite3_int64>& message_ids);
+    int get_users_account_in_group(vector<char *> &users_account_in_group, char* group_account);
+    int get_group_history_msg_handle(HISTORY_MSG_GET *HistoryMsgGet_msg , vector<CHAT_MSG*> &chat_msgs);
+    int update_group_chat_msg_status(vector<long long> &chat_msgs);
 
 public:
 

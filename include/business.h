@@ -50,6 +50,11 @@ public:
     int handle_chat_message(int clientfd, MSG_HEADER * msg_header);
     int handle_HistoryMsgGet_message(int clientfd, MSG_HEADER * msg_header);
     int handle_updateMsg_message(int clientfd, MSG_HEADER * msg_header);
+    int handle_create_group_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_GroupQuery_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_addgroup_message(int clientfd, MSG_HEADER *msg_header);
+    int handle_acceptgroup_message(int clientfd, MSG_HEADER *msg_header, int choice);
+    int handle_group_chat_message(int clientfd, MSG_HEADER * msg_header);
 
     // 执行用户操作指令函数
     int do_query(int sockfd, ACCOUNT_QUERY_MSG *query_msg, USER_QUERY_RESPONSE_MSG *response_msg);
@@ -58,6 +63,9 @@ public:
     int do_addfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg);
     int do_acceptfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPONSE_MSG *response_msg, int choice);
     int do_send_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg);
+    int do_acceptgroup(int sockfd, ADD_GROUP_MSG *add_group_msg, RESPONSE_MSG *response_msg, int choice);
+    int do_send_group_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg, vector<sqlite3_int64>& message_ids);
+    int handle_update_groupMsg_message(int clientfd, MSG_HEADER *msg_header);
 
 public:
     GThreadPool *m_pool;

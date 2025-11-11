@@ -67,6 +67,27 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     case UPDATE_CHAT_MSG_REQUEST:    // 更新消息阅读状态
         self->handle_updateMsg_message(clientfd, &msg_header);
         break;
+    case CREATE_GROUP_REQUEST:
+        self->handle_create_group_message(clientfd, &msg_header);
+        break;
+    case GROUP_QUERY_REQUEST:
+        self->handle_GroupQuery_message(clientfd, &msg_header);
+        break;
+    case ADD_GROUP_REQUEST:
+        self->handle_addgroup_message(clientfd, &msg_header);
+        break;
+    case ACCEPT_GROUP_ASK:        // 处理群主 通过群聊申请
+        self->handle_acceptgroup_message(clientfd, &msg_header, ACCEPT_GROUP_ASK);
+        break;
+    case REJECT_GROUP_ASK:       // 处理群主 拒绝群聊申请
+        self->handle_acceptgroup_message(clientfd, &msg_header, REJECT_GROUP_ASK);
+        break;
+    case SEND_GROUP_CHAT_MSG:
+        self->handle_group_chat_message(clientfd, &msg_header);
+        break;
+    case UPDATE_GROUP_CHAT_MSG_REQUEST:
+        self->handle_update_groupMsg_message(clientfd, &msg_header);
+        break;
     default:
         break;
     }
@@ -303,6 +324,40 @@ int Business:: handle_login_message(int clientfd, MSG_HEADER *msg_header)
 
     free(friend_list_msg);
     free(friend_online_notice);
+
+
+    // *********************** 拉取用户 群组申请列表 ***************************
+    //  拉取用户群组申请列表
+    GROUP_ASK_NOTICE_MSG *group_ask_notice_msgs = nullptr;  
+    if(m_db_handler->get_addgroup_ask(login_msg.user_account, &group_ask_notice_msgs) != 0)  // 注意！！！ 这里得是二级指针，因为需要修改其地址值
+    {
+        free(group_ask_notice_msgs);
+        return -1;
+    }
+
+    if(send_large_data(clientfd, group_ask_notice_msgs, sizeof(MSG_HEADER)+group_ask_notice_msgs->msg_header.msg_length) == -1)
+    {
+        printf("向用户:%s 推送群聊请求通知消息失败\n", login_msg.user_account);
+    }
+
+    free(group_ask_notice_msgs);
+
+
+    // *********************** 拉取用户 群组列表  ***************************
+    //  拉取用户群组列表
+    GROUP_LIST_MSG *group_list_msg = nullptr;
+    if(m_db_handler->get_grouplist(login_msg.user_account, &group_list_msg) != 0) 
+    {
+        free(group_list_msg);
+        return -1;
+    }
+
+    if(send_large_data(clientfd, group_list_msg, sizeof(MSG_HEADER)+group_list_msg->msg_header.msg_length) == -1)
+    {
+        printf("向用户:%s 推送群组列表失败\n", login_msg.user_account);
+    }
+
+    free(group_list_msg);
 
     // *********************** 拉取完毕，向用户发送登录响应  ***************************
     //  发送用户登录响应
@@ -667,36 +722,73 @@ int Business::handle_HistoryMsgGet_message(int clientfd, MSG_HEADER * msg_header
     int res = m_db_handler->get_history_msg_handle(&HisrotyMsg_get_msg, chat_msgs);
     if (res <= 0) {
         printf("用户没有历史消息或查询失败\n");
-        return 0;
     }
 
-    int sent_count = 0;
-    int failed_count = 0;
+    if(res > 0){
+        int sent_count = 0;
+        int failed_count = 0;
 
-    for (CHAT_MSG* chat_msg : chat_msgs) {
-        size_t msg_size = sizeof(MSG_HEADER) + chat_msg->msg_header.msg_length;
-        int bytes_sent = send(clientfd, (const char*)chat_msg, msg_size, 0);
-        
-        if (bytes_sent <= 0) {
-            printf("发送消息失败，消息ID: %lld\n", chat_msg->chat_msg_id);
-            failed_count++;
-        } else {
-            sent_count++;
+        for (CHAT_MSG* chat_msg : chat_msgs) {
+            size_t msg_size = sizeof(MSG_HEADER) + chat_msg->msg_header.msg_length;
+            int bytes_sent = send(clientfd, (const char*)chat_msg, msg_size, 0);
+            
+            if (bytes_sent <= 0) {
+                printf("发送消息失败，消息ID: %lld\n", chat_msg->chat_msg_id);
+                failed_count++;
+            } else {
+                sent_count++;
+            }
+            
+            // 释放当前消息内存
+            free(chat_msg);
+            
+            // 添加小延迟，避免网络拥堵（可选）
+            // usleep(1000); // 1ms 延迟
         }
         
-        // 释放当前消息内存
-        free(chat_msg);
-        
-        // 添加小延迟，避免网络拥堵（可选）
-        // usleep(1000); // 1ms 延迟
+        // 清空vector
+        chat_msgs.clear();
+        printf("历史消息发送完成: 成功 %d/%d, 失败 %d\n", 
+            sent_count, res, failed_count);
     }
-    
-    // 清空vector
-    chat_msgs.clear();
-    printf("历史消息发送完成: 成功 %d/%d, 失败 %d\n", 
-           sent_count, res, failed_count);
 
-    return (failed_count == 0) ? 0 : -1;    
+    printf("即将获取用户:%s 群聊历史消息\n", HisrotyMsg_get_msg.user_account);
+
+    vector<CHAT_MSG*> group_chat_msgs;
+    res = m_db_handler->get_group_history_msg_handle(&HisrotyMsg_get_msg, group_chat_msgs);
+    if (res <= 0) {
+        printf("用户没有群聊历史消息或查询失败\n");
+    }
+
+    if(res > 0){
+        int sent_count = 0;
+        int failed_count = 0;
+
+        for (CHAT_MSG* chat_msg : group_chat_msgs) {
+            size_t msg_size = sizeof(MSG_HEADER) + chat_msg->msg_header.msg_length;
+            int bytes_sent = send(clientfd, (const char*)chat_msg, msg_size, 0);
+            
+            if (bytes_sent <= 0) {
+                printf("发送群聊历史消息失败，消息ID: %lld\n", chat_msg->chat_msg_id);
+                failed_count++;
+            } else {
+                sent_count++;
+            }
+            
+            // 释放当前消息内存
+            free(chat_msg);
+            
+            // 添加小延迟，避免网络拥堵（可选）
+            // usleep(1000); // 1ms 延迟
+        }
+        
+        // 清空vector
+        group_chat_msgs.clear();
+        printf("历史消息发送完成: 成功 %d/%d, 失败 %d\n", 
+            sent_count, res, failed_count);
+    }
+
+    return 0;    
 }
 
 int Business::handle_updateMsg_message(int clientfd, MSG_HEADER *msg_header)
@@ -729,6 +821,36 @@ int Business::handle_updateMsg_message(int clientfd, MSG_HEADER *msg_header)
     return 0;
 }
 
+int Business::handle_update_groupMsg_message(int clientfd, MSG_HEADER *msg_header)
+{
+    int total_size = sizeof(MSG_HEADER) + msg_header->msg_length;
+    
+    // 使用 new 创建对象，会调用构造函数
+    UPDATE_CHAT_MSG *msg = new UPDATE_CHAT_MSG;
+    
+    // 复制消息头
+    msg->msg_header = *msg_header;
+    
+    // 接收消息数据
+    std::vector<char> buffer(msg_header->msg_length);
+    int recv_size = recv(clientfd, buffer.data(), msg_header->msg_length, MSG_WAITALL);
+    if (recv_size != msg_header->msg_length)
+    {
+        printf("消息不完整\n");
+        delete msg; // 记得释放内存
+        return -1;
+    }
+    
+    // 解析消息ID列表
+    parseMessageIds(buffer, msg->chat_msgs);
+    
+    printf("更新消息阅读状态，共 %zu 条消息\n", msg->chat_msgs.size());
+    m_db_handler->update_group_chat_msg_status(msg->chat_msgs);
+    
+    delete msg; // 释放内存
+    return 0;
+}
+
 // 解析消息ID的辅助函数
 void Business::parseMessageIds(const std::vector<char>& buffer, std::vector<long long>& chat_msgs)
 {
@@ -754,7 +876,341 @@ void Business::parseMessageIds(const std::vector<char>& buffer, std::vector<long
         data += sizeof(long long);
     }
 }
+
+int Business:: handle_create_group_message(int clientfd, MSG_HEADER *msg_header)
+{
+    // 接受剩余数据
+    CREATE_GROUP_MSG create_msg;
+
+    if(receive_remain_message(clientfd, msg_header, &create_msg) != 0)
+    {
+        return -1;
+    }
+
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = CREATE_GROUP_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+
+    printf("用户%s 即将创建群聊,账号:%s \n", create_msg.creator_account, create_msg.group_account);
+
+    m_db_handler->create_group_handle(&create_msg, &response_msg);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    {
+        printf("向用户:%s 发送创建响应失败", create_msg.creator_account);
+    }
+
+    // *****************************   如果创建成功，则需向创建者 发送群聊列表更新消息，更新群聊列表 *************************************
+    ACCOUNT_QUERY_MSG group_query_msg;
+    strcpy(group_query_msg.query_account, create_msg.group_account);
+    stpcpy(group_query_msg.user_account, create_msg.creator_account);
+
+    GROUP_QUERY_RESPONSE_MSG group_query_response_msg;
+    m_db_handler->query_group(&group_query_msg, &group_query_response_msg);        // 查询这个群的信息，通知其在线的群成员使用
+
+    //  构造群状态通知消息
+    GROUP_LIST_MSG* group_status_notice = nullptr;
+    if(m_db_handler->consturct_group_notice_msg(&group_query_response_msg.group_info, &group_status_notice) != 0) 
+    {
+        free(group_status_notice);
+        return -1;
+    }
+
+    // 向创建者推送群聊状态变化通知
+    if(send(clientfd, group_status_notice, sizeof(MSG_HEADER)+group_status_notice->msg_header.msg_length, 0) == -1)
+    {
+        printf("向用户：%s 推送群聊:%s 状态消息失败\n", create_msg.creator_account, create_msg.group_account);
+    }
+        
+    printf("向用户：%s 推送群聊:%s 状态消息成功\n", create_msg.creator_account, create_msg.group_account);
+
+    free(group_status_notice);
+
+    return 0;
+}
+
+int Business:: handle_GroupQuery_message(int clientfd, MSG_HEADER *msg_header)
+{
+    // 接受剩余数据
+    ACCOUNT_QUERY_MSG query_msg;
+
+    if(receive_remain_message(clientfd, msg_header, &query_msg) != 0)
+    {
+        return -1;
+    }
+
+    GROUP_QUERY_RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = GROUP_QUERY_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(response_msg) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+
+    printf("%s即将查询群组,查询账号:%s \n", query_msg.user_account, query_msg.query_account);
+    m_db_handler->query_group(&query_msg, &response_msg);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    {
+        printf("向用户:%s 发送群组查询响应失败", query_msg.user_account);
+    }
+
+    return 0;
     
+}
+
+int Business:: handle_addgroup_message(int clientfd, MSG_HEADER *msg_header)
+{
+    // ***********************  处理用户添加群组请求 【此时用户为添加方】***************************
+    // 接受剩余数据
+    ADD_GROUP_MSG add_group_msg;
+
+    if(receive_remain_message(clientfd, msg_header, &add_group_msg) != 0)
+    {
+        return -1;
+    }
+
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = GROUP_ADD_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+    
+    // strcpy(add_friend_msg.user_account, user_client[clientfd]);
+    printf("用户%s 即将添加群聊,账号:%s\n", add_group_msg.user_account, add_group_msg.group_account);
+
+    m_db_handler->addgroup_data_handle(&add_group_msg, &response_msg);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)     //  向操作用户发送添加好友是否成功的响应
+    {
+        printf("向用户:%s 发送添加群聊响应失败", add_group_msg.user_account);
+    }
+
+    printf("success_flag:%d\n", response_msg.success_flag);
+    if (response_msg.success_flag == 0)      // 如果此次添加失败，则直接返回
+    {
+        return -1;
+    }
+    
+    // ***********************  拉取这条群聊申请消息，向用户，群主分别发送这条申请消息，进行客户端UI更新 ***************************
+    //  拉取用户群聊单条申请消息
+    GROUP_ASK_NOTICE_MSG *group_ask_notice_msg = nullptr;  
+    if(m_db_handler->consutrct_group_ask_notice_msg(&add_group_msg, &group_ask_notice_msg) != 0)  
+    {
+        free(group_ask_notice_msg);
+        return -1;
+    }
+
+ 
+    // 向添加群聊的用户发送  群聊申请单条消息
+    if(send(clientfd, group_ask_notice_msg, sizeof(MSG_HEADER)+group_ask_notice_msg->msg_header.msg_length, 0) == -1)
+    {
+        printf("向用户:%s 推送群聊添加通知消息失败\n", group_ask_notice_msg->asks[0].user_account);
+    }
+    
+    USER_INFO creator_info;
+    strcpy(creator_info.user_account, group_ask_notice_msg->asks[0].creator_account);
+
+    // 向被用户添加的群聊群主（如果在线的话）发送  群聊申请单条消息
+    auto it = user_client.find(creator_info);
+
+    if (it != user_client.end())
+    {
+        creator_info.status = 1;
+        auto& creator_client = it->second;
+        if(send(creator_client, group_ask_notice_msg, sizeof(MSG_HEADER)+group_ask_notice_msg->msg_header.msg_length, 0) == -1)
+        {
+            printf("向群主:%s 推送群聊添加通知消息失败\n", group_ask_notice_msg->asks[0].creator_account);
+        }
+
+    }else{
+        creator_info.status = 0;
+    }
+
+    free(group_ask_notice_msg);
+
+    return 0;
+}
+
+int Business:: handle_acceptgroup_message(int clientfd, MSG_HEADER *msg_header, int choice)
+{
+    // ***********************  处理群主 同意/拒绝群聊申请 消息  【此时用户为群主】***************************
+    // 接受剩余数据
+    ADD_GROUP_MSG add_group_msg;
+
+    if(receive_remain_message(clientfd, msg_header, &add_group_msg) != 0)
+    {
+        return -1;
+    }
+
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+
+    if(choice == ACCEPT_GROUP_ASK){
+        response_msg.msg_header.msg_type = GROUP_ACCPET_RESPONSE;
+    }else{
+        response_msg.msg_header.msg_type = GROUP_REJECT_RESPONSE;
+    }
+    
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+
+    if (choice == ACCEPT_GROUP_ASK)
+    {
+        printf("群:%s 同意群聊添加请求,账号:%s\n", add_group_msg.group_account, add_group_msg.user_account);
+    }else{
+        printf("群:%s 拒绝群聊添加请求,账号:%s\n", add_group_msg.group_account, add_group_msg.user_account);
+    }
+
+    do_acceptgroup(clientfd, &add_group_msg, &response_msg, choice);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)   //  向操作的群主 发送处理好友申请是否成功的响应
+    {
+        printf("向群聊:%s 的群主发送处理群聊申请 响应失败\n", add_group_msg.group_account);
+    }
+
+    // **********************   向双方发送群聊申请更新消息，更新客户端UI  ************************
+    //  拉取用户群聊单条申请消息
+    GROUP_ASK_NOTICE_MSG *group_ask_notice_msg = nullptr;  
+    if(m_db_handler->consutrct_group_ask_notice_msg(&add_group_msg, &group_ask_notice_msg) != 0)  
+    {
+        free(group_ask_notice_msg);
+        return -1;
+    }
+
+    // 向  处理好友请求的群主（被添加方） 发送  群聊申请单条消息
+    if(send(clientfd, group_ask_notice_msg, sizeof(MSG_HEADER)+group_ask_notice_msg->msg_header.msg_length, 0) == -1)
+    {
+        printf("向群聊:%s 的群主推送群聊处理消息失败\n", add_group_msg.group_account);
+    }
+    
+    USER_INFO user_info;
+    strcpy(user_info.user_account, group_ask_notice_msg->asks[0].user_account);
+    strcpy(user_info.user_name, group_ask_notice_msg->asks[0].user_name);
+    // friend_ask_notice_msg->asks[0].friend_status = 0;
+    printf("发送过去的群聊添加状态为：%d", group_ask_notice_msg->asks[0].status);
+
+    // 向  被群主处理申请请求的用户（添加方）（如果在线的话）发送  群聊申请处理更新单条消息
+    auto it = user_client.find(user_info);
+
+    if (it != user_client.end())
+    {
+        user_info.status = 1;
+        auto& user_client = it->second;
+        if(send(user_client, group_ask_notice_msg, sizeof(MSG_HEADER)+group_ask_notice_msg->msg_header.msg_length, 0) == -1)
+        {
+            printf("向用户:%s 推送群聊添加通知消息失败\n", group_ask_notice_msg->asks[0].user_account);
+        }
+
+    }else{
+        user_info.status = 0;
+    }
+
+    free(group_ask_notice_msg);
+
+    // *****************************   如果添加成功，则需向群聊中的所有在线的人 发送群聊列表更新消息，更新群聊列表 *************************************
+    if(choice == ACCEPT_GROUP_ASK){
+        ACCOUNT_QUERY_MSG group_query_msg;
+        strcpy(group_query_msg.query_account, add_group_msg.group_account);
+        stpcpy(group_query_msg.user_account, add_group_msg.user_account);
+
+        GROUP_QUERY_RESPONSE_MSG group_query_response_msg;
+        m_db_handler->query_group(&group_query_msg, &group_query_response_msg);        // 查询这个群的信息，通知其在线的群成员使用
+  
+        //  构造群状态通知消息
+        GROUP_LIST_MSG* group_status_notice = nullptr;
+        if(m_db_handler->consturct_group_notice_msg(&group_query_response_msg.group_info, &group_status_notice) != 0) 
+        {
+            free(group_status_notice);
+            return -1;
+        }
+
+        vector<USER_INFO> users_in_group;
+        int member_count = m_db_handler->get_users_in_group(users_in_group, add_group_msg.group_account);
+
+        for (int i = 0; i < member_count; i++)
+        {
+            auto it = user_client.find(users_in_group[i]);
+            if (it != user_client.end())
+            {
+                users_in_group[i].status = 1;
+                auto& user_client = it->second;
+                
+                // 如果该群成员在线，则向ta推送群聊状态变化通知
+                if(send(user_client, group_status_notice, sizeof(MSG_HEADER)+group_status_notice->msg_header.msg_length, 0) == -1)
+                {
+                    printf("向用户：%s 推送群聊:%s 状态消息失败\n", users_in_group[i].user_account, add_group_msg.group_account);
+                }
+            }
+            printf("向用户：%s 推送群聊:%s 状态消息成功\n", users_in_group[i].user_account, add_group_msg.group_account);
+        }
+        
+        free(group_status_notice);
+    }
+
+    return 0;
+}
+
+int Business:: handle_group_chat_message(int clientfd, MSG_HEADER * msg_header)
+{
+    int total_size = sizeof(MSG_HEADER) + msg_header->msg_length;
+    CHAT_MSG *chat_msg = (CHAT_MSG*)malloc(total_size);
+
+    int remain_data = msg_header->msg_length;
+    
+    memcpy(&chat_msg->msg_header, msg_header, sizeof(MSG_HEADER));
+
+    char *msg_data = (char*)(chat_msg) + sizeof(MSG_HEADER); 
+    int recv_size = recv(clientfd, msg_data, remain_data, MSG_WAITALL);
+    if (recv_size != remain_data)
+    {
+        printf("消息不完整\n");
+        return -1;
+    }
+
+    RESPONSE_MSG response_msg;
+    memset(&response_msg, 0, sizeof(response_msg));
+    response_msg.msg_header.msg_type = SEND_GROUP_CHAT_RESPONSE;
+    response_msg.msg_header.msg_length = sizeof(RESPONSE_MSG) - sizeof(MSG_HEADER);
+    response_msg.msg_header.timestamp = time(NULL);
+
+    printf("用户:%s 即将向群聊:%s  发送消息\n", chat_msg->sender_account, chat_msg->receiver_account);
+
+    vector<sqlite3_int64> message_ids;
+    do_send_group_chat_msg(clientfd, chat_msg, &response_msg, message_ids);
+
+    if(send(clientfd, &response_msg, sizeof(response_msg), 0) == -1)
+    {
+        printf("向用户:%s 发送 群聊消息发送响应失败", chat_msg->sender_account);
+    }
+
+    // 如果群里用户在线，则立马转发消息给ta
+    chat_msg->msg_header.msg_type = GROUP_CHAT_MSG_NOTICE;
+
+    vector<USER_INFO> users_in_group;
+    int member_count = m_db_handler->get_users_in_group(users_in_group, chat_msg->receiver_account);
+
+    for (int i = 0; i < member_count; i++)
+    {
+        auto it = user_client.find(users_in_group[i]);
+        if (it != user_client.end() && strcmp(chat_msg->sender_account, users_in_group[i].user_account) != 0)
+        {
+            users_in_group[i].status = 1;
+            auto& user_client = it->second;
+            
+            chat_msg->chat_msg_id = message_ids[i];
+            // 如果该群成员在线，则向ta推送群聊状态变化通知
+            if(send(user_client, chat_msg, sizeof(MSG_HEADER)+chat_msg->msg_header.msg_length, 0) == -1)
+            {
+                printf("向用户：%s 推送群聊:%s 消息失败\n", users_in_group[i].user_account, chat_msg->receiver_account);
+            }
+
+            printf("向用户：%s 推送群聊:%s 状态消息成功\n", users_in_group[i].user_account, chat_msg->receiver_account);
+        }
+    }
+
+    return 0;
+}
 
 int Business:: do_register(int sockfd, REGISTET_MSG *register_msg, RESPONSE_MSG *response_msg)
 {
@@ -842,9 +1298,45 @@ int Business:: do_acceptfriend(int sockfd, ADD_FRIEND_MSG *add_friend_msg, RESPO
     return 0;
 }
 
+int Business:: do_acceptgroup(int sockfd, ADD_GROUP_MSG *add_group_msg, RESPONSE_MSG *response_msg, int choice)
+{
+    if(m_db_handler->updata_group_data_handle(add_group_msg, response_msg, choice) != 0)
+    {
+        return -1;
+    }
+
+    if (choice == ACCEPT_GROUP_ASK)
+    {
+        strcpy(response_msg->response, "同意用户加入群聊请求成功！\n");
+    }else{
+        strcpy(response_msg->response, "拒绝用户加入群聊请求成功！\n");
+    }
+
+    response_msg->success_flag = 1;
+    printf("群：%s 处理用户：%s 群聊请求成功\n", add_group_msg->group_account, add_group_msg->user_account);
+
+    return 0;
+}
+
 int Business:: do_send_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg)
 {
     if(m_db_handler->chatmsg_data_handle(chat_msg, response_msg) != 0)
+    {
+        response_msg->success_flag = 0;
+        strcpy(response_msg->response, "发送消息失败\n");
+        return -1;
+    }
+    
+    strcpy(response_msg->response, "发送成功!\n");
+    response_msg->success_flag = 1;
+
+    printf("%s发送成功\n", chat_msg->sender_account);
+    return 1;
+}
+
+int Business:: do_send_group_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg, vector<sqlite3_int64>& message_ids)
+{
+    if(m_db_handler->group_chatmsg_data_handle(chat_msg, response_msg, message_ids) != 0)
     {
         response_msg->success_flag = 0;
         strcpy(response_msg->response, "发送消息失败\n");

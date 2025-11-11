@@ -30,6 +30,11 @@ enum MessageType {
     REJECT_FRIEND_ASK = 11,      // 拒绝好友申请
     HISTORY_MSG_REQUEST = 12,      // 历史消息请求
     UPDATE_CHAT_MSG_REQUEST = 13,  // 更新消息阅读状态
+    GROUP_QUERY_REQUEST = 14,     // 群组查询响应
+    ACCEPT_GROUP_ASK = 15,      // 同意群组申请
+    REJECT_GROUP_ASK = 16,      // 拒绝群组申请
+    SEND_GROUP_CHAT_MSG = 17,   // 发送群聊聊天消息
+    UPDATE_GROUP_CHAT_MSG_REQUEST = 18,  // 更新群聊消息阅读状态
 
     LOGIN_RESPONSE = 21,          // 登录响应
     REGISTER_RESPONSE = 22,       // 注册响应
@@ -43,10 +48,20 @@ enum MessageType {
     GROUP_LIST_RESPONSE = 30,     // 群组列表响应
     NORMAL_RESPONSE = 31,         // 普通响应
     HISTORY_MSG_RESPONSE = 32,      // 历史消息响应
+    CREATE_GROUP_RESPONSE = 33,    // 创建群聊响应
+    GROUP_QUERY_RESPONSE = 34,     // 群组查询响应
+    GROUP_ADD_RESPONSE = 35,       // 群组添加响应
+    ADD_GROUP_LIST_RESPONSE = 36,  // 群组添加列表响应
+    GROUP_ACCPET_RESPONSE = 37,    // 群聊申请同意响应
+    GROUP_REJECT_RESPONSE = 38,    // 群聊申请拒绝响应
+    SEND_GROUP_CHAT_RESPONSE = 39, // 群聊消息响应
 
     ADD_FRIEND_NOTICE = 41,       // 好友添加通知
     FRIEND_STATUS_NOTICE = 42,    // 好友上线/离线通知
     CHAT_MSG_NOTICE = 43,         // 消息通知
+    ADD_GROUP_NOTICE = 44,        // 群聊通知
+    GROUP_STATUS_NOTICE = 45,     // 群聊状态变化通知
+    GROUP_CHAT_MSG_NOTICE = 46,   // 群聊消息通知
 
     MSG_CHAT_TEXT = 51,               // 文本聊天
     MSG_CHAT_FILE = 52,               // 文件传输
@@ -104,13 +119,16 @@ typedef struct{
     MSG_HEADER msg_header;
     char group_account[ACCOUNT_SIZE];
     char group_name[NAME_SIZE];
+    int avatar_size;
+    char avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
+    char creator_account[ACCOUNT_SIZE];  // 群主账号
 }CREATE_GROUP_MSG;
 
 //添加群
 typedef struct{
     MSG_HEADER msg_header;
     char user_account[ACCOUNT_SIZE];
-    char group_name[NAME_SIZE];
+    char group_account[ACCOUNT_SIZE];
 }ADD_GROUP_MSG;
 
 //发送消息
@@ -154,6 +172,8 @@ typedef struct{
     char group_account[ACCOUNT_SIZE];
     char group_creator[ACCOUNT_SIZE];
     int member_count;
+    int avatar_size;
+    char avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
 }GROUP_INFO;
 
 // 好友列表信息
@@ -189,6 +209,28 @@ typedef struct{
     FRIEND_ADD_ASK asks[];
 }FRIEND_ASK_NOTICE_MSG;
 
+// 单个群聊申请请求
+typedef struct
+{
+    char user_account[ACCOUNT_SIZE];
+    char user_name[NAME_SIZE];
+    int user_avatar_size;
+    char user_avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
+    char group_acccount[ACCOUNT_SIZE];
+    char group_name[NAME_SIZE];
+    int group_avatar_size;
+    char group_avatar_data[MAX_AVATAR_SIZE]; // 头像二进制数据
+    char creator_account[ACCOUNT_SIZE];      // 创建者账号
+    int status;
+    char add_time[TIME_SIZE];
+}GROUP_ADD_ASK;
+
+// 群聊添加请求提醒
+typedef struct{
+    MSG_HEADER msg_header;
+    GROUP_ADD_ASK asks[];
+}GROUP_ASK_NOTICE_MSG;
+
 // 好友上线，离线信息
 typedef struct{
     MSG_HEADER msg_header;
@@ -202,6 +244,14 @@ typedef struct{
     char response[RESPONSE_SIZE];
     int success_flag;
 }USER_QUERY_RESPONSE_MSG;
+
+// 群组查询响应
+typedef struct{
+    MSG_HEADER msg_header;
+    GROUP_INFO group_info;
+    char response[RESPONSE_SIZE];
+    int success_flag;
+}GROUP_QUERY_RESPONSE_MSG;
 
 // 用户请求普通响应
 typedef struct{
