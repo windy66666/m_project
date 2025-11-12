@@ -35,6 +35,7 @@ enum MessageType {
     REJECT_GROUP_ASK = 16,      // 拒绝群组申请
     SEND_GROUP_CHAT_MSG = 17,   // 发送群聊聊天消息
     UPDATE_GROUP_CHAT_MSG_REQUEST = 18,  // 更新群聊消息阅读状态
+    GROUP_MEMBER_QUERY = 19,      // 查询群成员请求
 
     LOGIN_RESPONSE = 21,          // 登录响应
     REGISTER_RESPONSE = 22,       // 注册响应
@@ -55,6 +56,7 @@ enum MessageType {
     GROUP_ACCPET_RESPONSE = 37,    // 群聊申请同意响应
     GROUP_REJECT_RESPONSE = 38,    // 群聊申请拒绝响应
     SEND_GROUP_CHAT_RESPONSE = 39, // 群聊消息响应
+    GROUP_MEMBER_QUERY_RESPONSE = 40,  // 群成员信息响应
 
     ADD_FRIEND_NOTICE = 41,       // 好友添加通知
     FRIEND_STATUS_NOTICE = 42,    // 好友上线/离线通知
@@ -252,6 +254,13 @@ typedef struct{
     char response[RESPONSE_SIZE];
     int success_flag;
 }GROUP_QUERY_RESPONSE_MSG;
+
+//群成员查询响应消息
+typedef struct{
+    MSG_HEADER msg_header;
+    char group_account[ACCOUNT_SIZE];
+    USER_INFO users[];
+}GROUP_MEMBER_QUERY_RESPONSE_MSG;
 
 // 用户请求普通响应
 typedef struct{

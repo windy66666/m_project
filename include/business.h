@@ -55,6 +55,7 @@ public:
     int handle_addgroup_message(int clientfd, MSG_HEADER *msg_header);
     int handle_acceptgroup_message(int clientfd, MSG_HEADER *msg_header, int choice);
     int handle_group_chat_message(int clientfd, MSG_HEADER * msg_header);
+    int handle_query_users_in_group_message(int clientfd, MSG_HEADER * msg_header);
 
     // 执行用户操作指令函数
     int do_query(int sockfd, ACCOUNT_QUERY_MSG *query_msg, USER_QUERY_RESPONSE_MSG *response_msg);

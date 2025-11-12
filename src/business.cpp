@@ -88,6 +88,9 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     case UPDATE_GROUP_CHAT_MSG_REQUEST:
         self->handle_update_groupMsg_message(clientfd, &msg_header);
         break;
+    case GROUP_MEMBER_QUERY:
+        self->handle_query_users_in_group_message(clientfd, &msg_header);
+        break;
     default:
         break;
     }
@@ -1126,10 +1129,16 @@ int Business:: handle_acceptgroup_message(int clientfd, MSG_HEADER *msg_header, 
         }
 
         vector<USER_INFO> users_in_group;
+        vector<USER_INFO> add_success_user;
         int member_count = m_db_handler->get_users_in_group(users_in_group, add_group_msg.group_account);
 
         for (int i = 0; i < member_count; i++)
         {
+            if (strcmp(users_in_group[i].user_account, add_group_msg.user_account) == 0)
+            {
+                add_success_user.push_back(users_in_group[i]);
+            }
+            
             auto it = user_client.find(users_in_group[i]);
             if (it != user_client.end())
             {
@@ -1141,13 +1150,66 @@ int Business:: handle_acceptgroup_message(int clientfd, MSG_HEADER *msg_header, 
                 {
                     printf("向用户：%s 推送群聊:%s 状态消息失败\n", users_in_group[i].user_account, add_group_msg.group_account);
                 }
+                printf("向用户：%s 推送群聊:%s 状态消息成功\n", users_in_group[i].user_account, add_group_msg.group_account);
             }
-            printf("向用户：%s 推送群聊:%s 状态消息成功\n", users_in_group[i].user_account, add_group_msg.group_account);
         }
         
         free(group_status_notice);
-    }
 
+
+    // *****************************   如果添加成功，则需向群聊中的所有在线的人 发送群聊中的用户更新消息，更新群聊列表 *************************************
+        // 计算动态消息大小
+        size_t fixed_size = sizeof(MSG_HEADER) + sizeof(char) * ACCOUNT_SIZE;
+        size_t dynamic_size = fixed_size + sizeof(USER_INFO);
+        
+        // 动态分配内存
+        GROUP_MEMBER_QUERY_RESPONSE_MSG* response_msg2 = 
+            (GROUP_MEMBER_QUERY_RESPONSE_MSG*)malloc(dynamic_size);
+        
+        if (!response_msg2) {
+            printf("分配内存失败\n");
+            return -1;
+        }
+
+        // 初始化消息头
+        memset(response_msg2, 0, dynamic_size);
+        response_msg2->msg_header.msg_type = GROUP_MEMBER_QUERY_RESPONSE;
+        response_msg2->msg_header.msg_length = dynamic_size - sizeof(MSG_HEADER);
+        response_msg2->msg_header.total_count = 1; // 保存成员数量
+        response_msg2->msg_header.timestamp = time(NULL);
+        
+        // 复制群账号
+        strncpy(response_msg2->group_account, add_group_msg.group_account, ACCOUNT_SIZE - 1);
+
+        // 复制成员信息
+        for (size_t i = 0; i < 1; i++) {
+            response_msg2->users[i] = add_success_user[i];
+        }
+
+
+        for (int i = 0; i < member_count; i++)
+        {  
+            auto it = user_client.find(users_in_group[i]);
+            if (it != user_client.end())
+            {
+                users_in_group[i].status = 1;
+                auto& user_client = it->second;
+                
+                // 如果该群成员在线，则向ta推送群聊状态变化通知
+                if(send(user_client, response_msg2, dynamic_size, 0) == -1)
+                {
+                    printf("向用户：%s 推送群成员:%s 状态消息失败\n", users_in_group[i].user_account, add_group_msg.group_account);
+                }
+                printf("向用户：%s 推送群成员:%s 状态消息成功\n", users_in_group[i].user_account, add_group_msg.group_account);
+            }
+        }
+
+        printf("成功发送群组成员信息，群号:%s, 成员数量:%zu\n", 
+            add_group_msg.group_account, add_success_user.size());
+
+        free(response_msg2);
+    }
+    
     return 0;
 }
 
@@ -1209,6 +1271,69 @@ int Business:: handle_group_chat_message(int clientfd, MSG_HEADER * msg_header)
         }
     }
 
+    return 0;
+}
+
+int Business::handle_query_users_in_group_message(int clientfd, MSG_HEADER *msg_header)
+{
+    // 接受剩余数据
+    ACCOUNT_QUERY_MSG query_msg;
+
+    if(receive_remain_message(clientfd, msg_header, &query_msg) != 0)
+    {
+        return -1;
+    }
+
+    printf("%s即将查询群组成员,查询群聊账号:%s \n", query_msg.user_account, query_msg.query_account);
+    
+    vector<USER_INFO> users_in_group;
+    int member_count = m_db_handler->get_users_in_group(users_in_group, query_msg.query_account);
+    
+    if (member_count < 0) {
+        printf("查询群组成员失败，群号:%s\n", query_msg.query_account);
+        return -1;
+    }
+
+    // 计算动态消息大小
+    size_t fixed_size = sizeof(MSG_HEADER) + sizeof(char) * ACCOUNT_SIZE;
+    size_t dynamic_size = fixed_size + sizeof(USER_INFO) * users_in_group.size();
+    
+    // 动态分配内存
+    GROUP_MEMBER_QUERY_RESPONSE_MSG* response_msg = 
+        (GROUP_MEMBER_QUERY_RESPONSE_MSG*)malloc(dynamic_size);
+    
+    if (!response_msg) {
+        printf("分配内存失败\n");
+        return -1;
+    }
+
+    // 初始化消息头
+    memset(response_msg, 0, dynamic_size);
+    response_msg->msg_header.msg_type = GROUP_MEMBER_QUERY_RESPONSE;
+    response_msg->msg_header.msg_length = dynamic_size - sizeof(MSG_HEADER);
+    response_msg->msg_header.total_count = users_in_group.size(); // 保存成员数量
+    response_msg->msg_header.timestamp = time(NULL);
+    
+    // 复制群账号
+    strncpy(response_msg->group_account, query_msg.query_account, ACCOUNT_SIZE - 1);
+
+    // 复制成员信息
+    for (size_t i = 0; i < users_in_group.size(); i++) {
+        response_msg->users[i] = users_in_group[i];
+    }
+
+    // 发送动态分配的消息
+    if(send(clientfd, response_msg, dynamic_size, 0) == -1)
+    {
+        printf("向用户:%s 发送群组查询响应失败\n", query_msg.user_account);
+        free(response_msg);
+        return -1;
+    }
+
+    printf("成功发送群组成员信息，群号:%s, 成员数量:%zu\n", 
+           query_msg.query_account, users_in_group.size());
+
+    free(response_msg);
     return 0;
 }
 
