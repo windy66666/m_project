@@ -2,7 +2,7 @@
 
 Business:: Business(data_handler * DataHandler)
 {
-    m_pool = g_thread_pool_new(thread_handle, this, 5, FALSE, NULL);
+    m_pool = g_thread_pool_new(thread_handle, this, 20, FALSE, NULL);
     m_db_handler = DataHandler;
 }
 
@@ -22,78 +22,98 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
 {
     Business *self = static_cast<Business*>(user_data);
     // MSG_INFO msg_info;
-    int clientfd = *(int *)data;
+    // 使用智能指针确保内存释放
+    std::unique_ptr<int> clientfd_ptr(static_cast<int*>(data));
+    int clientfd = *clientfd_ptr;
     // printf("客户端clientfd:%d\n", clientfd);
-    MSG_HEADER msg_header;
-    // 先清空内存，避免旧数据干扰
-    memset(&msg_header, 0, sizeof(MSG_HEADER));
-    if(self->receive_message_header(clientfd, &msg_header, self) == -1)
+
+
+    int message_count = 0;
+    while (true)
     {
-        printf("接收消息头失败\n");
-        return;
+        MSG_HEADER msg_header;
+        // 先清空内存，避免旧数据干扰
+        memset(&msg_header, 0, sizeof(MSG_HEADER));
+        int result = self->receive_message_header(clientfd, &msg_header, self);
+
+        if (result == -1)
+        {
+            printf("客户端 %d 连接关闭或出错，共处理 %d 条消息\n", clientfd, message_count);
+            break;
+        }else if(result == 0){
+            if(message_count > 0){
+                printf("客户端 %d 处理完成，共处理 %d 条消息\n", clientfd, message_count);
+            }
+            break;
+        }
+        
+
+        // 成功读取到消息头，处理消息
+        message_count++;
+        printf("处理第 %d 条消息，类型: %d\n", message_count, msg_header.msg_type);
+
+        // 根据消息类型处理消息
+        switch (msg_header.msg_type)
+        {
+        case REGISTER_REQUEST:         // 处理用户注册请求
+            // printf("即将注册用户,账号:%s  密码:%s\n", msg_info.account_num, msg_info.password);
+            self->handle_register_message(clientfd, &msg_header);
+            break;
+        case LOGIN_REQUEST:           // 处理用户登录请求
+            // printf("-------------------执行登录-----------\n");
+            self->handle_login_message(clientfd, &msg_header);
+            break;
+        case ACCOUNT_QUERY_REQUEST:       // 处理用户查询请求
+            printf("查询用户\n");
+            self->handle_AccountQuery_message(clientfd, &msg_header);
+            break;
+        case ADD_FRIEND_REQUEST:        // 处理用户添加好友请求
+            self->handle_addfriend_message(clientfd, &msg_header);
+            break;
+        case ACCEPT_FRIEND_ASK:        // 处理用户通过好友申请
+            self->handle_acceptfriend_message(clientfd, &msg_header, ACCEPT_FRIEND_ASK);
+            break;
+        case REJECT_FRIEND_ASK:       // 处理用户拒绝好友申请
+            self->handle_acceptfriend_message(clientfd, &msg_header, REJECT_FRIEND_ASK);
+            break;
+        case SEND_CHAT_MSG:           // 处理聊天消息 
+            self->handle_chat_message(clientfd, &msg_header);
+            break;
+        case HISTORY_MSG_REQUEST:      // 拉取历史消息
+            self->handle_HistoryMsgGet_message(clientfd, &msg_header);
+            break;
+        case UPDATE_CHAT_MSG_REQUEST:    // 更新消息阅读状态
+            self->handle_updateMsg_message(clientfd, &msg_header);
+            break;
+        case CREATE_GROUP_REQUEST:
+            self->handle_create_group_message(clientfd, &msg_header);
+            break;
+        case GROUP_QUERY_REQUEST:
+            self->handle_GroupQuery_message(clientfd, &msg_header);
+            break;
+        case ADD_GROUP_REQUEST:
+            self->handle_addgroup_message(clientfd, &msg_header);
+            break;
+        case ACCEPT_GROUP_ASK:        // 处理群主 通过群聊申请
+            self->handle_acceptgroup_message(clientfd, &msg_header, ACCEPT_GROUP_ASK);
+            break;
+        case REJECT_GROUP_ASK:       // 处理群主 拒绝群聊申请
+            self->handle_acceptgroup_message(clientfd, &msg_header, REJECT_GROUP_ASK);
+            break;
+        case SEND_GROUP_CHAT_MSG:
+            self->handle_group_chat_message(clientfd, &msg_header);
+            break;
+        case UPDATE_GROUP_CHAT_MSG_REQUEST:
+            self->handle_update_groupMsg_message(clientfd, &msg_header);
+            break;
+        case GROUP_MEMBER_QUERY:
+            self->handle_query_users_in_group_message(clientfd, &msg_header);
+            break;
+        default:
+            break;
+        }
     }
 
-    printf("msg_type:%d\n", msg_header.msg_type);
-    // 根据消息类型处理消息
-    switch (msg_header.msg_type)
-    {
-    case REGISTER_REQUEST:         // 处理用户注册请求
-        // printf("即将注册用户,账号:%s  密码:%s\n", msg_info.account_num, msg_info.password);
-        self->handle_register_message(clientfd, &msg_header);
-        break;
-    case LOGIN_REQUEST:           // 处理用户登录请求
-        // printf("-------------------执行登录-----------\n");
-        self->handle_login_message(clientfd, &msg_header);
-        break;
-    case ACCOUNT_QUERY_REQUEST:       // 处理用户查询请求
-        printf("查询用户\n");
-        self->handle_AccountQuery_message(clientfd, &msg_header);
-        break;
-    case ADD_FRIEND_REQUEST:        // 处理用户添加好友请求
-        self->handle_addfriend_message(clientfd, &msg_header);
-        break;
-    case ACCEPT_FRIEND_ASK:        // 处理用户通过好友申请
-        self->handle_acceptfriend_message(clientfd, &msg_header, ACCEPT_FRIEND_ASK);
-        break;
-    case REJECT_FRIEND_ASK:       // 处理用户拒绝好友申请
-        self->handle_acceptfriend_message(clientfd, &msg_header, REJECT_FRIEND_ASK);
-        break;
-    case SEND_CHAT_MSG:           // 处理聊天消息 
-        self->handle_chat_message(clientfd, &msg_header);
-        break;
-    case HISTORY_MSG_REQUEST:      // 拉取历史消息
-        self->handle_HistoryMsgGet_message(clientfd, &msg_header);
-        break;
-    case UPDATE_CHAT_MSG_REQUEST:    // 更新消息阅读状态
-        self->handle_updateMsg_message(clientfd, &msg_header);
-        break;
-    case CREATE_GROUP_REQUEST:
-        self->handle_create_group_message(clientfd, &msg_header);
-        break;
-    case GROUP_QUERY_REQUEST:
-        self->handle_GroupQuery_message(clientfd, &msg_header);
-        break;
-    case ADD_GROUP_REQUEST:
-        self->handle_addgroup_message(clientfd, &msg_header);
-        break;
-    case ACCEPT_GROUP_ASK:        // 处理群主 通过群聊申请
-        self->handle_acceptgroup_message(clientfd, &msg_header, ACCEPT_GROUP_ASK);
-        break;
-    case REJECT_GROUP_ASK:       // 处理群主 拒绝群聊申请
-        self->handle_acceptgroup_message(clientfd, &msg_header, REJECT_GROUP_ASK);
-        break;
-    case SEND_GROUP_CHAT_MSG:
-        self->handle_group_chat_message(clientfd, &msg_header);
-        break;
-    case UPDATE_GROUP_CHAT_MSG_REQUEST:
-        self->handle_update_groupMsg_message(clientfd, &msg_header);
-        break;
-    case GROUP_MEMBER_QUERY:
-        self->handle_query_users_in_group_message(clientfd, &msg_header);
-        break;
-    default:
-        break;
-    }
 }
 
 
@@ -177,7 +197,7 @@ int Business:: receive_message_header(int sockfd, MSG_HEADER *header, Business *
             cout << "客户端:" << pair.second << "\t" << "账号:" << pair.first.user_account << "\t" << "昵称:" << pair.first.user_name << endl;
         }
         printf("------------------------------\n");
-        return 1;
+        return -1;
     }else if(recv_size < 0){
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // 这是正常情况，不是错误！
@@ -189,9 +209,13 @@ int Business:: receive_message_header(int sockfd, MSG_HEADER *header, Business *
             close(sockfd);
             return -1;
         }
+    }else if (recv_size != sizeof(MSG_HEADER))
+    {
+        printf("消息头不完整: %ld/%ld\n", recv_size, sizeof(MSG_HEADER));
+        return 0; // 不完整数据
     }
     // printf("消息类型：%d, 消息长度: %d, 消息时间戳:%d, 消息数量：%d\n", header->msg_type, header->msg_length, header->timestamp, header->total_count);
-    return 0;
+    return 1;
 }
 
 template<typename T>
@@ -1196,7 +1220,7 @@ int Business:: handle_acceptgroup_message(int clientfd, MSG_HEADER *msg_header, 
                 auto& user_client = it->second;
                 
                 // 如果该群成员在线，则向ta推送群聊状态变化通知
-                if(send(user_client, response_msg2, dynamic_size, 0) == -1)
+                if(send_large_data(user_client, response_msg2, dynamic_size) == -1)
                 {
                     printf("向用户：%s 推送群成员:%s 状态消息失败\n", users_in_group[i].user_account, add_group_msg.group_account);
                 }

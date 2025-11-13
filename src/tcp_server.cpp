@@ -168,8 +168,8 @@ int TcpServer:: main_loop()
                 }
             }else if (events[i].events & EPOLLIN)
             {
-                int clientfd = events[i].data.fd;
-                m_business->push_task(&clientfd);
+                int *clientfd_ptr = new int(events[i].data.fd);
+                m_business->push_task(clientfd_ptr);
                 // g_thread_pool_push(pool, clientfd_ptr, NULL);
             }
         }
