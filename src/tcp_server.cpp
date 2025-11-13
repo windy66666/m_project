@@ -151,6 +151,9 @@ int TcpServer:: main_loop()
                 }
                 printf("客户端 %d 连接成功！\n", client_fd);
 
+                // 为新客户端添加锁
+                m_business->add_client_lock(client_fd);
+
                 // 客户端socket设为非阻塞，并添加到epoll监听
                 if (set_nonblocking(client_fd) == -1) {
                     close(client_fd);
@@ -168,8 +171,17 @@ int TcpServer:: main_loop()
                 }
             }else if (events[i].events & EPOLLIN)
             {
-                int *clientfd_ptr = new int(events[i].data.fd);
-                m_business->push_task(clientfd_ptr);
+                // 尝试获取读锁，如果获取不到说明该客户端正在被其他线程处理
+                auto read_lock = m_business->get_client_read_lock(fd);
+                if (read_lock.owns_lock()) {
+                    int *clientfd_ptr = new int(fd);
+                    m_business->push_task(clientfd_ptr);
+                } else {
+                    printf("客户端 %d 正在被其他线程处理，跳过此次事件\n", fd);
+                }
+
+                // int *clientfd_ptr = new int(events[i].data.fd);
+                // m_business->push_task(clientfd_ptr);
                 // g_thread_pool_push(pool, clientfd_ptr, NULL);
             }
         }

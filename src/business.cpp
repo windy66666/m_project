@@ -11,6 +11,38 @@ Business:: ~Business()
 
 }
 
+void Business::add_client_lock(int clientfd){
+    std::lock_guard<std::mutex> lock(map_mutex);
+    // 使用 try_emplace 和原地构造
+    client_mutex_map.try_emplace(clientfd);
+}
+
+void Business::remove_client_lock(int clientfd) {
+    std::lock_guard<std::mutex> lock(map_mutex);
+    client_mutex_map.erase(clientfd);
+}
+
+// 获取客户端的读锁（用于读取消息）
+std::shared_lock<std::shared_mutex> Business:: get_client_read_lock(int clientfd) {
+    std::lock_guard<std::mutex> lock(map_mutex);
+    auto it = client_mutex_map.find(clientfd);
+    if (it != client_mutex_map.end()) {
+        return std::shared_lock<std::shared_mutex>(it->second);
+    }
+    // 如果找不到，返回一个空的锁
+    return std::shared_lock<std::shared_mutex>();
+}
+
+// 获取客户端的写锁（用于处理消息）
+std::unique_lock<std::shared_mutex> Business:: get_client_write_lock(int clientfd) {
+    std::lock_guard<std::mutex> lock(map_mutex);
+    auto it = client_mutex_map.find(clientfd);
+    if (it != client_mutex_map.end()) {
+        return std::unique_lock<std::shared_mutex>(it->second);
+    }
+    // 如果找不到，返回一个空的锁
+    return std::unique_lock<std::shared_mutex>();
+}
 
 void Business:: push_task(int *clientfd)
 {
@@ -27,6 +59,12 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
     int clientfd = *clientfd_ptr;
     // printf("客户端clientfd:%d\n", clientfd);
 
+    // 获取写锁，确保同一时间只有一个线程处理这个客户端
+    auto write_lock = self->get_client_write_lock(clientfd);
+    if (!write_lock.owns_lock()) {
+        printf("无法获取客户端 %d 的锁，跳过处理\n", clientfd);
+        return;
+    }
 
     int message_count = 0;
     while (true)
@@ -39,6 +77,8 @@ void Business:: thread_handle(gpointer data, gpointer user_data)
         if (result == -1)
         {
             printf("客户端 %d 连接关闭或出错，共处理 %d 条消息\n", clientfd, message_count);
+            // 移除客户端锁
+            self->remove_client_lock(clientfd);
             break;
         }else if(result == 0){
             if(message_count > 0){

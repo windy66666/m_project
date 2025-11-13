@@ -18,6 +18,9 @@
 #include "protocol.h"
 #include "data_handler.h"
 #include <vector>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
 
 using namespace std;
 
@@ -68,6 +71,14 @@ public:
     int do_send_group_chat_msg(int sockfd, CHAT_MSG *chat_msg, RESPONSE_MSG *response_msg, vector<sqlite3_int64>& message_ids);
     int handle_update_groupMsg_message(int clientfd, MSG_HEADER *msg_header);
 
+    // 添加和移除客户端锁的方法
+    void add_client_lock(int clientfd);
+    void remove_client_lock(int clientfd);
+    // 获取客户端的读锁（用于读取消息）
+    std::shared_lock<std::shared_mutex> get_client_read_lock(int clientfd);
+    // 获取客户端的写锁（用于处理消息）
+    std::unique_lock<std::shared_mutex> get_client_write_lock(int clientfd);
+
 public:
     GThreadPool *m_pool;
     int online_user_count = 0;
@@ -75,6 +86,9 @@ public:
 
 private:
     data_handler *m_db_handler;
+    // 为每个客户端fd维护一个读写锁
+    std::unordered_map<int, std::shared_mutex> client_mutex_map;
+    std::mutex map_mutex; // 保护client_mutex_map的互斥锁
 };
 
 #endif // BUSINESS_H
