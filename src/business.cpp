@@ -161,8 +161,8 @@ int Business:: receive_message_header(int sockfd, MSG_HEADER *header, Business *
 {
     Business *self = business;
     ssize_t recv_size = recv(sockfd, header, sizeof(MSG_HEADER), 0);
-    printf("接收消息头大小：%ld\n", recv_size);
-    printf("理论消息头大小：%ld\n", sizeof(MSG_HEADER));
+    // printf("接收消息头大小：%ld\n", recv_size);
+    // printf("理论消息头大小：%ld\n", sizeof(MSG_HEADER));
     if (recv_size == 0)
     {
         // printf("客户端 %d 断开连接\n", sockfd);
@@ -258,27 +258,86 @@ int Business:: receive_message_header(int sockfd, MSG_HEADER *header, Business *
     return 1;
 }
 
+// template<typename T>
+// int Business:: receive_remain_message(int clientfd, MSG_HEADER *msg_header, T* total_msg)
+// {
+//     int remain_data = msg_header->msg_length;
+
+//     if (remain_data != sizeof(T) - sizeof(MSG_HEADER))
+//     {
+//         printf("消息长度错误\n");
+//         return -1;
+//     }
+    
+//     memcpy(&total_msg->msg_header, msg_header, sizeof(MSG_HEADER));
+
+//     char *msg_data = (char*)(total_msg) + sizeof(MSG_HEADER); 
+//     int recv_size = recv(clientfd, msg_data, remain_data, MSG_WAITALL);
+//     if (recv_size != remain_data)
+//     {
+//         printf("消息不完整\n");
+//         return -1;
+//     }
+
+//     return 0;
+// }
+
+// 改进的接收函数
 template<typename T>
-int Business:: receive_remain_message(int clientfd, MSG_HEADER *msg_header, T* total_msg)
+int Business::receive_remain_message(int clientfd, MSG_HEADER *msg_header, T* total_msg)
 {
     int remain_data = msg_header->msg_length;
 
+    printf("开始接收消息体，剩余数据大小: %d\n", remain_data);
+    printf("期望结构体大小: %ld, 消息头大小: %ld\n", sizeof(T), sizeof(MSG_HEADER));
+    
     if (remain_data != sizeof(T) - sizeof(MSG_HEADER))
     {
-        printf("消息长度错误\n");
+        printf("消息长度不匹配! 实际=%d, 期望=%ld\n", 
+               remain_data, sizeof(T) - sizeof(MSG_HEADER));
         return -1;
     }
     
     memcpy(&total_msg->msg_header, msg_header, sizeof(MSG_HEADER));
 
     char *msg_data = (char*)(total_msg) + sizeof(MSG_HEADER); 
-    int recv_size = recv(clientfd, msg_data, remain_data, MSG_WAITALL);
-    if (recv_size != remain_data)
-    {
-        printf("消息不完整\n");
+    
+    // 使用循环确保接收完整数据
+    int total_received = 0;
+    int attempt_count = 0;
+    const int MAX_ATTEMPTS = 10;  // 防止无限循环
+    
+    while (total_received < remain_data && attempt_count < MAX_ATTEMPTS) {
+        int recv_size = recv(clientfd, msg_data + total_received, 
+                            remain_data - total_received, 0);
+        
+        if (recv_size == 0) {
+            printf("连接在接收消息体过程中关闭\n");
+            return -1;
+        } else if (recv_size < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                printf("暂时无数据，等待... 已接收: %d/%d\n", total_received, remain_data);
+                usleep(200000); // 等待50ms
+                attempt_count++;
+                continue;
+            } else {
+                perror("接收消息体失败");
+                return -1;
+            }
+        } else {
+            total_received += recv_size;
+            printf("本次接收: %d bytes, 总接收: %d/%d\n", 
+                   recv_size, total_received, remain_data);
+            attempt_count = 0; // 重置尝试计数
+        }
+    }
+    
+    if (total_received != remain_data) {
+        printf("消息体接收不完整! 已接收: %d, 期望: %d\n", total_received, remain_data);
         return -1;
     }
 
+    printf("消息体接收完成，总大小: %d\n", total_received);
     return 0;
 }
 
